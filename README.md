@@ -108,7 +108,7 @@ No secret is ever sent to the browser. The app has no `NEXT_PUBLIC_*` variables.
 7. Vault files are stored in Postgres by default on Vercel (`STORAGE_DRIVER=database`). To use Supabase Storage instead, set `STORAGE_DRIVER=supabase` with a **private** bucket and `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_STORAGE_BUCKET`.
 8. `vercel.json` already schedules `/api/cron/run` daily at 04:00 UTC (07:00 in Nairobi). Vercel sends `Authorization: Bearer $CRON_SECRET` automatically. On a paid plan you can make it hourly (`0 * * * *`) for more timely reminders.
 
-To try the demo account on a deployment, run the seed once against the production database from your machine: `DATABASE_URL=… DATABASE_URL_UNPOOLED=… npm run db:seed`. Leave it out if the site is only for you.
+To try the demo account on a deployment, run the seed once against the production database from your machine: `DATABASE_URL=… npm run db:seed` (use the unpooled URL). Leave it out if the site is only for you.
 
 ### A VPS or Docker host
 

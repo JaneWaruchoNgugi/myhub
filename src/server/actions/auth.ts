@@ -25,6 +25,11 @@ export async function loginAction(_: AuthState, formData: FormData): Promise<Aut
     });
   } catch (e) {
     if (e instanceof NextAuthError) {
+      // A failure inside authorize (e.g. the database is unreachable) is not a wrong password.
+      if (e.type === "CallbackRouteError") {
+        console.error("[login] sign-in failed", e.cause ?? e);
+        return { error: "Sign-in failed because the server couldn't reach its database. Try again in a moment." };
+      }
       if ((e as { code?: string }).code === "rate_limited") return { error: "Too many attempts for this account. Try again in 15 minutes." };
       return { error: "Incorrect email or password." };
     }
@@ -42,13 +47,18 @@ export async function registerAction(_: AuthState, formData: FormData): Promise<
     return { error: "Please fix the highlighted fields.", fieldErrors };
   }
   const { name, email, password } = parsed.data;
-  const exists = await prisma.user.findUnique({ where: { email } });
-  if (exists) return { error: "An account with this email already exists." };
-  const passwordHash = await bcrypt.hash(password, 12);
-  await prisma.$transaction(async (tx) => {
-    const user = await tx.user.create({ data: { name, email, passwordHash } });
-    await provisionUser(tx, user.id);
-  });
+  try {
+    const exists = await prisma.user.findUnique({ where: { email } });
+    if (exists) return { error: "An account with this email already exists." };
+    const passwordHash = await bcrypt.hash(password, 12);
+    await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({ data: { name, email, passwordHash } });
+      await provisionUser(tx, user.id);
+    });
+  } catch (e) {
+    console.error("[register] could not create account", e);
+    return { error: "Your account couldn't be created because of a server error. Try again in a moment." };
+  }
   try {
     await signIn("credentials", { email, password, redirectTo: "/dashboard" });
   } catch (e) {

@@ -9,7 +9,8 @@ export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUserPage();
-  await runMaintenance(user.id, user.prefs);
+  // Housekeeping (recurring entries, reminders, snapshots) must never take the whole app down.
+  await runMaintenance(user.id, user.prefs).catch((e) => console.error("[maintenance] failed", e));
   const unread = await prisma.notification.count({ where: { userId: user.id, isRead: false, dismissed: false } });
   const { currency, locale, timezone, weekStartsOn } = user.prefs;
   return (

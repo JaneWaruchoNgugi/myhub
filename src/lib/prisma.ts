@@ -7,6 +7,10 @@ const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
 export const prisma =
   globalForPrisma.prisma ??
-  new PrismaClient({ datasourceUrl, log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"] });
+  new PrismaClient({
+    datasourceUrl,
+    // Serverless databases can take a few seconds to wake; give transactions room before failing.
+    transactionOptions: { maxWait: 10_000, timeout: 20_000 },
+    log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"] });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;

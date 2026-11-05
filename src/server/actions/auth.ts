@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { registerSchema } from "@/lib/validation/productivity";
 import { provisionUser } from "@/lib/services/defaults";
 import { rateLimit } from "@/lib/rate-limit";
+import { classifyDbError, DB_PROBLEM_TEXT } from "@/lib/db-diagnose";
 
 export type AuthState = { error?: string; fieldErrors?: Record<string, string> } | undefined;
 
@@ -27,8 +28,10 @@ export async function loginAction(_: AuthState, formData: FormData): Promise<Aut
     if (e instanceof NextAuthError) {
       // A failure inside authorize (e.g. the database is unreachable) is not a wrong password.
       if (e.type === "CallbackRouteError") {
-        console.error("[login] sign-in failed", e.cause ?? e);
-        return { error: "Sign-in failed because the server couldn't reach its database. Try again in a moment." };
+        const cause = (e.cause as { err?: unknown } | undefined)?.err ?? e.cause ?? e;
+        const problem = classifyDbError(cause);
+        console.error(`[login] sign-in failed (${problem})`, cause);
+        return { error: `Sign-in failed. ${DB_PROBLEM_TEXT[problem].message} ${problem === "unreachable" ? "Try again in a moment." : "Details at /api/health."}` };
       }
       if ((e as { code?: string }).code === "rate_limited") return { error: "Too many attempts for this account. Try again in 15 minutes." };
       return { error: "Incorrect email or password." };
@@ -56,8 +59,9 @@ export async function registerAction(_: AuthState, formData: FormData): Promise<
       await provisionUser(tx, user.id);
     });
   } catch (e) {
-    console.error("[register] could not create account", e);
-    return { error: "Your account couldn't be created because of a server error. Try again in a moment." };
+    const problem = classifyDbError(e);
+    console.error(`[register] could not create account (${problem})`, e);
+    return { error: `Your account couldn't be created. ${DB_PROBLEM_TEXT[problem].message} ${problem === "unreachable" ? "Try again in a moment." : "Details at /api/health."}` };
   }
   try {
     await signIn("credentials", { email, password, redirectTo: "/dashboard" });

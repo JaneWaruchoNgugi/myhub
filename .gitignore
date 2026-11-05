@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# MYHUB: never commit secrets or uploaded documents
+!.env.example
+/storage/

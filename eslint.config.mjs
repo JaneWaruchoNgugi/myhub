@@ -18,8 +18,11 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      "storage/**",
     ],
   },
+  // Plain apostrophes in JSX text render fine; escaping them hurts readability of UI copy.
+  { rules: { "react/no-unescaped-entities": "off" } },
 ];
 
 export default eslintConfig;

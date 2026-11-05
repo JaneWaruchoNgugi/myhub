@@ -1,0 +1,1019 @@
+// MYHUB database schema
+// Money: Decimal(14,2). Units/prices: Decimal(20,8). Date-only fields use @db.Date
+// so they never shift with timezones.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ───────────────────────── Users & preferences ─────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  name         String?
+  email        String   @unique
+  passwordHash String
+  isDemo       Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  preference          UserPreference?
+  accounts            Account[]
+  categories          TransactionCategory[]
+  transactions        Transaction[]
+  recurringRules      RecurringRule[]
+  budgets             Budget[]
+  savingsGoals        SavingsGoal[]
+  savingsContribs     SavingsContribution[]
+  loans               Loan[]
+  loanRepayments      LoanRepayment[]
+  investments         Investment[]
+  investmentTxns      InvestmentTransaction[]
+  watchlist           WatchlistItem[]
+  bills               Bill[]
+  billPayments        BillPayment[]
+  subscriptions       Subscription[]
+  tasks               Task[]
+  events              CalendarEvent[]
+  notifications       Notification[]
+  devProjects         DevProject[]
+  devTasks            DevTask[]
+  bookmarks           Bookmark[]
+  learningGoals       LearningGoal[]
+  snippets            CodeSnippet[]
+  devGoals            DevGoal[]
+  notes               Note[]
+  documents           Document[]
+  assets              Asset[]
+  liabilities         Liability[]
+  netWorthSnapshots   NetWorthSnapshot[]
+  auditLogs           AuditLog[]
+}
+
+model UserPreference {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  currency              String   @default("KES")
+  timezone              String   @default("Africa/Nairobi")
+  locale                String   @default("en-KE")
+  weekStartsOn          Int      @default(1)
+  budgetAlertThreshold  Int      @default(80) // percent
+  billReminderDays      Int      @default(3)
+  loanReminderDays      Int      @default(5)
+  taskReminderDays      Int      @default(1)
+  projectReminderDays   Int      @default(7)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String   // create | update | delete | pay | repay | ...
+  entity    String
+  entityId  String?
+  details   Json?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+// ───────────────────────── Accounts & ledger ─────────────────────────
+
+enum AccountType {
+  CASH
+  BANK
+  MOBILE_MONEY
+  SAVINGS
+  INVESTMENT_CASH
+  OTHER
+}
+
+model Account {
+  id             String      @id @default(cuid())
+  userId         String
+  name           String
+  type           AccountType
+  institution    String?
+  openingBalance Decimal     @default(0) @db.Decimal(14, 2)
+  openingDate    DateTime    @default(now()) @db.Date
+  currency       String      @default("KES")
+  color          String?
+  isArchived     Boolean     @default(false)
+  notes          String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions     Transaction[]   @relation("TxnAccount")
+  transfersIn      Transaction[]   @relation("TxnToAccount")
+  recurringRules   RecurringRule[] @relation("RuleAccount")
+  recurringRulesTo RecurringRule[] @relation("RuleToAccount")
+  savingsGoals     SavingsGoal[]
+  bills            Bill[]
+  subscriptions    Subscription[]
+  loans            Loan[]
+  investments      Investment[]
+
+  @@unique([userId, name])
+  @@index([userId])
+}
+
+enum CategoryType {
+  INCOME
+  EXPENSE
+}
+
+model TransactionCategory {
+  id        String       @id @default(cuid())
+  userId    String
+  name      String
+  type      CategoryType
+  color     String       @default("#6366f1")
+  isSystem  Boolean      @default(false)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions   Transaction[]
+  recurringRules RecurringRule[]
+  budgetItems    BudgetItem[]
+  bills          Bill[]
+  subscriptions  Subscription[]
+
+  @@unique([userId, name, type])
+  @@index([userId])
+}
+
+/// INCOME / EXPENSE affect reports. TRANSFER moves money between two of the user's
+/// accounts. INFLOW / OUTFLOW move money in or out of an account without being
+/// income or expense (loan principal, investment purchases/sale proceeds), so
+/// principal is never double-counted.
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+  INFLOW
+  OUTFLOW
+}
+
+enum TransactionSource {
+  MANUAL
+  RECURRING
+  BILL
+  SUBSCRIPTION
+  LOAN
+  INVESTMENT
+  SAVINGS
+}
+
+model Transaction {
+  id            String            @id @default(cuid())
+  userId        String
+  type          TransactionType
+  source        TransactionSource @default(MANUAL)
+  amount        Decimal           @db.Decimal(14, 2) // always positive
+  date          DateTime          @db.Date
+  description   String
+  notes         String?
+  accountId     String
+  toAccountId   String?           // TRANSFER only
+  categoryId    String?
+  recurringRuleId String?
+  occurrenceDate  DateTime?       @db.Date
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account       Account              @relation("TxnAccount", fields: [accountId], references: [id], onDelete: Restrict)
+  toAccount     Account?             @relation("TxnToAccount", fields: [toAccountId], references: [id], onDelete: Restrict)
+  category      TransactionCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  recurringRule RecurringRule?       @relation(fields: [recurringRuleId], references: [id], onDelete: SetNull)
+
+  billPayment         BillPayment?
+  savingsContribution SavingsContribution?
+  loanPrincipal       LoanRepayment?         @relation("RepaymentPrincipalTxn")
+  loanInterest        LoanRepayment?         @relation("RepaymentInterestTxn")
+  loanDisbursement    Loan?                  @relation("LoanDisbursementTxn")
+  investmentTxn       InvestmentTransaction?
+  subscriptionCharge  SubscriptionCharge?
+
+  @@unique([recurringRuleId, occurrenceDate])
+  @@index([userId, date])
+  @@index([userId, type, date])
+  @@index([accountId])
+  @@index([toAccountId])
+  @@index([categoryId])
+}
+
+enum Frequency {
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+model RecurringRule {
+  id          String          @id @default(cuid())
+  userId      String
+  type        TransactionType // INCOME | EXPENSE | TRANSFER
+  amount      Decimal         @db.Decimal(14, 2)
+  description String
+  accountId   String
+  toAccountId String?
+  categoryId  String?
+  frequency   Frequency
+  startDate   DateTime        @db.Date
+  nextDate    DateTime        @db.Date
+  endDate     DateTime?       @db.Date
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  user         User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account              @relation("RuleAccount", fields: [accountId], references: [id], onDelete: Cascade)
+  toAccount    Account?             @relation("RuleToAccount", fields: [toAccountId], references: [id], onDelete: Cascade)
+  category     TransactionCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  transactions Transaction[]
+
+  @@index([userId, nextDate])
+}
+
+// ───────────────────────── Budgets ─────────────────────────
+
+model Budget {
+  id        String       @id @default(cuid())
+  userId    String
+  month     DateTime     @db.Date // first day of month
+  rollover  Boolean      @default(false)
+  notes     String?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items     BudgetItem[]
+
+  @@unique([userId, month])
+}
+
+model BudgetItem {
+  id         String              @id @default(cuid())
+  budgetId   String
+  categoryId String
+  limit      Decimal             @db.Decimal(14, 2)
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+  budget     Budget              @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  category   TransactionCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([budgetId, categoryId])
+}
+
+// ───────────────────────── Savings ─────────────────────────
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum GoalStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  CANCELLED
+}
+
+/// A goal earmarks money held in a real account. It is never counted as an
+/// extra asset on top of the account balance.
+model SavingsGoal {
+  id               String     @id @default(cuid())
+  userId           String
+  name             String
+  description      String?
+  targetAmount     Decimal    @db.Decimal(14, 2)
+  targetDate       DateTime?  @db.Date
+  priority         Priority   @default(MEDIUM)
+  status           GoalStatus @default(ACTIVE)
+  isEmergencyFund  Boolean    @default(false)
+  accountId        String
+  milestonesNotified Int      @default(0) // highest 25% step already notified
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account       Account               @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  contributions SavingsContribution[]
+
+  @@index([userId])
+}
+
+enum ContributionType {
+  CONTRIBUTION
+  WITHDRAWAL
+}
+
+model SavingsContribution {
+  id              String           @id @default(cuid())
+  userId          String
+  goalId          String
+  type            ContributionType
+  amount          Decimal          @db.Decimal(14, 2)
+  date            DateTime         @db.Date
+  note            String?
+  transactionId   String?          @unique // transfer created when money moved between accounts
+  createdAt       DateTime         @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal        SavingsGoal  @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([goalId, date])
+}
+
+// ───────────────────────── Loans ─────────────────────────
+
+enum LoanDirection {
+  BORROWED
+  LENT
+}
+
+enum LoanType {
+  PERSONAL
+  BANK
+  MOBILE
+  CREDIT_CARD
+  SACCO
+  OTHER
+}
+
+enum LoanStatus {
+  ACTIVE
+  PAID_OFF
+  DEFAULTED
+  WRITTEN_OFF
+}
+
+model Loan {
+  id                 String        @id @default(cuid())
+  userId             String
+  name               String
+  direction          LoanDirection
+  loanType           LoanType      @default(PERSONAL)
+  counterparty       String        // lender or borrower
+  principal          Decimal       @db.Decimal(14, 2)
+  interestRate       Decimal       @default(0) @db.Decimal(7, 4) // annual %
+  startDate          DateTime      @db.Date
+  dueDate            DateTime      @db.Date
+  frequency          Frequency     @default(MONTHLY)
+  status             LoanStatus    @default(ACTIVE)
+  notes              String?
+  accountId          String?       // account the principal moved through
+  disbursementTxnId  String?       @unique
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account          Account?        @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  disbursementTxn  Transaction?    @relation("LoanDisbursementTxn", fields: [disbursementTxnId], references: [id], onDelete: SetNull)
+  repayments       LoanRepayment[]
+  bills            Bill[]
+
+  @@index([userId, status])
+}
+
+model LoanRepayment {
+  id                 String   @id @default(cuid())
+  userId             String
+  loanId             String
+  date               DateTime @db.Date
+  principalAmount    Decimal  @db.Decimal(14, 2)
+  interestAmount     Decimal  @default(0) @db.Decimal(14, 2)
+  note               String?
+  accountId          String?
+  principalTxnId     String?  @unique
+  interestTxnId      String?  @unique
+  createdAt          DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loan         Loan         @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  principalTxn Transaction? @relation("RepaymentPrincipalTxn", fields: [principalTxnId], references: [id], onDelete: SetNull)
+  interestTxn  Transaction? @relation("RepaymentInterestTxn", fields: [interestTxnId], references: [id], onDelete: SetNull)
+  billPayment  BillPayment?
+
+  @@index([loanId, date])
+}
+
+// ───────────────────────── Investments ─────────────────────────
+
+enum AssetClass {
+  STOCK
+  ETF
+  MONEY_MARKET
+  TREASURY_BILL
+  GOVERNMENT_BOND
+  MUTUAL_FUND
+  CRYPTO
+  OTHER
+}
+
+model Investment {
+  id            String     @id @default(cuid())
+  userId        String
+  name          String
+  symbol        String?
+  assetClass    AssetClass
+  platform      String?
+  units         Decimal    @default(0) @db.Decimal(20, 8)
+  costBasis     Decimal    @default(0) @db.Decimal(14, 2) // cost of units currently held (average cost)
+  currentPrice  Decimal    @default(0) @db.Decimal(20, 8) // manual; never fetched/fabricated
+  priceUpdatedAt DateTime?
+  priceSource   String     @default("manual")
+  purchaseDate  DateTime?  @db.Date
+  accountId     String?    // default cash account for buys/sales
+  notes         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account?                @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  transactions InvestmentTransaction[]
+  prices       InvestmentPrice[]
+
+  @@index([userId])
+}
+
+enum InvestmentTxnType {
+  BUY
+  SELL
+  DIVIDEND
+  INTEREST
+}
+
+model InvestmentTransaction {
+  id            String            @id @default(cuid())
+  userId        String
+  investmentId  String
+  type          InvestmentTxnType
+  date          DateTime          @db.Date
+  units         Decimal           @default(0) @db.Decimal(20, 8)
+  price         Decimal           @default(0) @db.Decimal(20, 8)
+  amount        Decimal           @db.Decimal(14, 2) // gross cash amount
+  fees          Decimal           @default(0) @db.Decimal(14, 2)
+  realizedGain  Decimal?          @db.Decimal(14, 2) // SELL only
+  costRemoved   Decimal?          @db.Decimal(14, 2) // SELL only
+  note          String?
+  transactionId String?           @unique
+  createdAt     DateTime          @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investment  Investment   @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@index([investmentId, date])
+}
+
+model InvestmentPrice {
+  id           String     @id @default(cuid())
+  investmentId String
+  date         DateTime   @db.Date
+  price        Decimal    @db.Decimal(20, 8)
+  source       String     @default("manual")
+  createdAt    DateTime   @default(now())
+  investment   Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+
+  @@unique([investmentId, date])
+}
+
+model WatchlistItem {
+  id          String     @id @default(cuid())
+  userId      String
+  symbol      String
+  name        String
+  assetClass  AssetClass
+  targetPrice Decimal?   @db.Decimal(20, 8)
+  lastPrice   Decimal?   @db.Decimal(20, 8)
+  notes       String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, symbol])
+}
+
+// ───────────────────────── Bills & subscriptions ─────────────────────────
+
+enum Recurrence {
+  NONE
+  DAILY
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum BillKind {
+  RENT
+  ELECTRICITY
+  WATER
+  INTERNET
+  PHONE
+  SCHOOL_FEES
+  INSURANCE
+  LOAN_REPAYMENT
+  STREAMING
+  HOSTING
+  OTHER
+}
+
+model Bill {
+  id            String     @id @default(cuid())
+  userId        String
+  name          String
+  kind          BillKind   @default(OTHER)
+  amount        Decimal    @db.Decimal(14, 2)
+  categoryId    String?
+  accountId     String?    // default payment account
+  loanId        String?    // LOAN_REPAYMENT bills settle through the loan
+  nextDueDate   DateTime   @db.Date
+  recurrence    Recurrence @default(MONTHLY)
+  paymentMethod String?
+  isActive      Boolean    @default(true)
+  notes         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category  TransactionCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  account   Account?             @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  loan      Loan?                @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  payments  BillPayment[]
+
+  @@index([userId, nextDueDate])
+}
+
+model BillPayment {
+  id              String   @id @default(cuid())
+  userId          String
+  billId          String
+  dueDate         DateTime @db.Date   // the period this payment settles
+  paidDate        DateTime @db.Date
+  amount          Decimal  @db.Decimal(14, 2)
+  paymentMethod   String?
+  note            String?
+  transactionId   String?  @unique
+  loanRepaymentId String?  @unique
+  createdAt       DateTime @default(now())
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  bill          Bill           @relation(fields: [billId], references: [id], onDelete: Cascade)
+  transaction   Transaction?   @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+  loanRepayment LoanRepayment? @relation(fields: [loanRepaymentId], references: [id], onDelete: SetNull)
+
+  @@unique([billId, dueDate]) // one payment per billing period: no duplicates
+  @@index([userId, paidDate])
+}
+
+enum BillingCycle {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  SEMI_ANNUAL
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  TRIAL
+}
+
+model Subscription {
+  id              String             @id @default(cuid())
+  userId          String
+  name            String
+  provider        String?
+  amount          Decimal            @db.Decimal(14, 2)
+  billingCycle    BillingCycle       @default(MONTHLY)
+  nextBillingDate DateTime           @db.Date
+  paymentMethod   String?
+  status          SubscriptionStatus @default(ACTIVE)
+  categoryId      String?
+  accountId       String?
+  url             String?
+  notes           String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+
+  user     User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category TransactionCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  account  Account?             @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  charges  SubscriptionCharge[]
+
+  @@index([userId, nextBillingDate])
+}
+
+model SubscriptionCharge {
+  id             String       @id @default(cuid())
+  subscriptionId String
+  billingDate    DateTime     @db.Date
+  amount         Decimal      @db.Decimal(14, 2)
+  transactionId  String?      @unique
+  createdAt      DateTime     @default(now())
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  transaction    Transaction? @relation(fields: [transactionId], references: [id], onDelete: SetNull)
+
+  @@unique([subscriptionId, billingDate])
+}
+
+// ───────────────────────── Tasks, calendar, notifications ─────────────────────────
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum TaskCategory {
+  PERSONAL
+  WORK
+  HEALTH
+  FINANCE
+  LEARNING
+  ERRAND
+  OTHER
+}
+
+model Task {
+  id              String       @id @default(cuid())
+  userId          String
+  title           String
+  description     String?
+  startDate       DateTime?
+  dueDate         DateTime?
+  allDay          Boolean      @default(true)
+  priority        Priority     @default(MEDIUM)
+  category        TaskCategory @default(PERSONAL)
+  status          TaskStatus   @default(TODO)
+  reminderMinutes Int?         // minutes before due
+  recurrence      Recurrence   @default(NONE)
+  completedAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, dueDate])
+}
+
+enum EventType {
+  APPOINTMENT
+  MEETING
+  EVENT
+  DEADLINE
+  REMINDER
+  OTHER
+}
+
+model CalendarEvent {
+  id              String     @id @default(cuid())
+  userId          String
+  title           String
+  description     String?
+  location        String?
+  type            EventType  @default(EVENT)
+  start           DateTime
+  end             DateTime?
+  allDay          Boolean    @default(false)
+  reminderMinutes Int?
+  recurrence      Recurrence @default(NONE)
+  color           String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  user            User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, start])
+}
+
+enum NotificationType {
+  BILL_UPCOMING
+  BILL_OVERDUE
+  LOAN_REPAYMENT
+  LOAN_OVERDUE
+  TASK_UPCOMING
+  TASK_OVERDUE
+  EVENT_UPCOMING
+  BUDGET_WARNING
+  BUDGET_EXCEEDED
+  SAVINGS_MILESTONE
+  PROJECT_DEADLINE
+  SUBSCRIPTION_RENEWAL
+  SYSTEM
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  type      NotificationType
+  title     String
+  message   String
+  link      String?
+  dedupeKey String           // prevents the same reminder being created twice
+  isRead    Boolean          @default(false)
+  /// Dismissed rows are kept (hidden) so the same reminder is not re-created by the dedupe key.
+  dismissed Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, isRead, createdAt])
+}
+
+// ───────────────────────── Developer workspace ─────────────────────────
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+}
+
+model DevProject {
+  id          String        @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  status      ProjectStatus @default(PLANNING)
+  startDate   DateTime?     @db.Date
+  deadline    DateTime?     @db.Date
+  techStack   String[]
+  repoUrl     String?
+  liveUrl     String?
+  notes       String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks       DevTask[]
+
+  @@unique([userId, name])
+}
+
+enum DevTaskType {
+  IDEA
+  FEATURE
+  BUG
+  IMPROVEMENT
+  TECH_DEBT
+  RESEARCH
+}
+
+enum DevTaskStatus {
+  IDEAS
+  BACKLOG
+  TODO
+  IN_PROGRESS
+  TESTING
+  COMPLETED
+}
+
+model DevTask {
+  id          String        @id @default(cuid())
+  userId      String
+  projectId   String?
+  title       String
+  description String?
+  type        DevTaskType   @default(FEATURE)
+  status      DevTaskStatus @default(BACKLOG)
+  priority    Priority      @default(MEDIUM)
+  position    Int           @default(0)
+  dueDate     DateTime?     @db.Date
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project     DevProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([userId, status, position])
+}
+
+enum BookmarkCategory {
+  DOCUMENTATION
+  REPOSITORY
+  TUTORIAL
+  ARTICLE
+  API
+  TOOL
+  SNIPPET
+  IDEA
+  OTHER
+}
+
+model Bookmark {
+  id          String           @id @default(cuid())
+  userId      String
+  title       String
+  url         String
+  description String?
+  category    BookmarkCategory @default(OTHER)
+  tags        String[]
+  isFavourite Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum LearningKind {
+  LANGUAGE
+  FRAMEWORK
+  TECHNOLOGY
+  COURSE
+  TUTORIAL
+  SKILL
+}
+
+enum LearningStatus {
+  WANT_TO_LEARN
+  LEARNING
+  PAUSED
+  COMPLETED
+}
+
+model LearningGoal {
+  id          String         @id @default(cuid())
+  userId      String
+  name        String
+  kind        LearningKind
+  status      LearningStatus @default(WANT_TO_LEARN)
+  progress    Int            @default(0)
+  resourceUrl String?
+  targetDate  DateTime?      @db.Date
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model CodeSnippet {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  language    String
+  code        String
+  description String?
+  tags        String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum DevGoalType {
+  BUILD_SAAS
+  LEARN_FRAMEWORK
+  COMPLETE_COURSE
+  OPEN_SOURCE
+  DEPLOY_PROJECT
+  OTHER
+}
+
+model DevGoal {
+  id          String      @id @default(cuid())
+  userId      String
+  title       String
+  description String?
+  type        DevGoalType @default(OTHER)
+  status      GoalStatus  @default(ACTIVE)
+  progress    Int         @default(0)
+  targetDate  DateTime?   @db.Date
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ───────────────────────── Notes & documents ─────────────────────────
+
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  content   String   @default("")
+  category  String?
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isPinned, updatedAt])
+}
+
+enum DocumentCategory {
+  RECEIPT
+  INVOICE
+  CONTRACT
+  ID
+  TAX
+  INSURANCE
+  MEDICAL
+  EDUCATION
+  OTHER
+}
+
+model Document {
+  id          String           @id @default(cuid())
+  userId      String
+  name        String
+  category    DocumentCategory @default(OTHER)
+  description String?
+  storageKey  String           @unique // opaque key in the storage provider
+  mimeType    String
+  size        Int
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ───────────────────────── Net worth ─────────────────────────
+
+enum AssetType {
+  PROPERTY
+  VEHICLE
+  EQUIPMENT
+  JEWELLERY
+  RECEIVABLE
+  OTHER
+}
+
+/// Manually valued assets only. Account balances, investments and money lent
+/// are derived from their own modules and are never entered here.
+model Asset {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  type      AssetType
+  value     Decimal   @db.Decimal(14, 2)
+  valuedAt  DateTime  @db.Date
+  notes     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum LiabilityType {
+  CREDIT_CARD
+  MORTGAGE
+  TAX
+  OTHER
+}
+
+/// Liabilities not tracked as a Loan (credit cards, outstanding tax, etc).
+model Liability {
+  id        String        @id @default(cuid())
+  userId    String
+  name      String
+  type      LiabilityType
+  balance   Decimal       @db.Decimal(14, 2)
+  asOf      DateTime      @db.Date
+  notes     String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model NetWorthSnapshot {
+  id               String   @id @default(cuid())
+  userId           String
+  date             DateTime @db.Date // first day of month
+  totalAssets      Decimal  @db.Decimal(16, 2)
+  totalLiabilities Decimal  @db.Decimal(16, 2)
+  netWorth         Decimal  @db.Decimal(16, 2)
+  breakdown        Json
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+}

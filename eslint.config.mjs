@@ -19,6 +19,7 @@ const eslintConfig = [
       "build/**",
       "next-env.d.ts",
       "storage/**",
+      "tests/e2e/**", // plain Node + Playwright scripts, run outside the app
     ],
   },
   // Plain apostrophes in JSX text render fine; escaping them hurts readability of UI copy.

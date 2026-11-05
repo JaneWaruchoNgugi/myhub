@@ -8,7 +8,7 @@ import { advance, dayFromString, type Freq } from "@/lib/dates";
 import { dec } from "@/lib/money";
 import { billPaySchema, billSchema, subscriptionChargeSchema, subscriptionSchema } from "@/lib/validation/obligations";
 import { loanSummary } from "@/lib/services/loans";
-import { opt, ownedAccount, ownedCategory } from "../guards";
+import { opt, ownedAccount, ownedCategory, assertId } from "../guards";
 import { deleteRepaymentTx, recordRepaymentTx } from "../ops/loans";
 
 const refresh = () => revalidatePath("/", "layout");
@@ -24,6 +24,7 @@ async function checkRefs(userId: string, v: { categoryId?: string; accountId?: s
 
 export async function saveBill(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = billSchema.parse(input);
     await checkRefs(user.id, v);
@@ -35,6 +36,7 @@ export async function saveBill(id: string | null, input: unknown) {
       accountId: opt(v.accountId),
       loanId: v.kind === "LOAN_REPAYMENT" ? opt(v.loanId) : null,
       nextDueDate: dayFromString(v.nextDueDate),
+      anchorDay: dayFromString(v.nextDueDate).getUTCDate(),
       recurrence: v.recurrence,
       paymentMethod: opt(v.paymentMethod),
       isActive: v.isActive,
@@ -51,6 +53,7 @@ export async function saveBill(id: string | null, input: unknown) {
 
 export async function deleteBill(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const b = await tx.bill.findFirst({ where: { id, userId: user.id }, include: { payments: true } });
@@ -112,7 +115,7 @@ export async function payBill(input: unknown) {
       });
       // Recurring bills roll forward to the next period; one-off bills close.
       if (bill.recurrence === "NONE") await tx.bill.update({ where: { id: bill.id }, data: { isActive: false } });
-      else await tx.bill.update({ where: { id: bill.id }, data: { nextDueDate: advance(bill.nextDueDate, bill.recurrence as Freq) } });
+      else await tx.bill.update({ where: { id: bill.id }, data: { nextDueDate: advance(bill.nextDueDate, bill.recurrence as Freq, bill.anchorDay ?? undefined) } });
       await audit(tx, user.id, "pay", "Bill", bill.id, { amount: v.amount, dueDate: bill.nextDueDate.toISOString().slice(0, 10), transactionId, loanRepaymentId });
     });
     refresh();
@@ -125,6 +128,7 @@ function D_min(a: ReturnType<typeof dec>, b: ReturnType<typeof dec>) {
 
 export async function undoBillPayment(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const p = await tx.billPayment.findFirst({ where: { id, userId: user.id }, include: { bill: true, transaction: true } });
@@ -144,11 +148,12 @@ export async function undoBillPayment(id: string) {
 /** Advances a bill to its next period without paying (e.g. waived this month). */
 export async function skipBillPeriod(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const b = await prisma.bill.findFirst({ where: { id, userId: user.id } });
     if (!b) fail("Bill not found.");
     if (b.recurrence === "NONE") fail("One-off bills can't be skipped. Delete or deactivate it instead.");
-    await prisma.bill.update({ where: { id }, data: { nextDueDate: advance(b.nextDueDate, b.recurrence as Freq) } });
+    await prisma.bill.update({ where: { id }, data: { nextDueDate: advance(b.nextDueDate, b.recurrence as Freq, b.anchorDay ?? undefined) } });
     refresh();
   }, "Moved to the next period");
 }
@@ -157,6 +162,7 @@ export async function skipBillPeriod(id: string) {
 
 export async function saveSubscription(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = subscriptionSchema.parse(input);
     await checkRefs(user.id, v);
@@ -166,6 +172,7 @@ export async function saveSubscription(id: string | null, input: unknown) {
       amount: v.amount,
       billingCycle: v.billingCycle,
       nextBillingDate: dayFromString(v.nextBillingDate),
+      anchorDay: dayFromString(v.nextBillingDate).getUTCDate(),
       paymentMethod: opt(v.paymentMethod),
       status: v.status,
       categoryId: opt(v.categoryId),
@@ -184,6 +191,7 @@ export async function saveSubscription(id: string | null, input: unknown) {
 
 export async function deleteSubscription(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const s = await tx.subscription.findFirst({ where: { id, userId: user.id }, include: { charges: true } });
@@ -212,7 +220,7 @@ export async function recordSubscriptionCharge(input: unknown) {
         data: { userId: user.id, type: "EXPENSE", source: "SUBSCRIPTION", amount: v.amount, date: dayFromString(v.date), description: `${s.name} subscription`, accountId: v.accountId, categoryId: s.categoryId },
       });
       await tx.subscriptionCharge.create({ data: { subscriptionId: s.id, billingDate: s.nextBillingDate, amount: v.amount, transactionId: t.id } });
-      await tx.subscription.update({ where: { id: s.id }, data: { nextBillingDate: advance(s.nextBillingDate, CYCLE_FREQ[s.billingCycle], s.nextBillingDate.getUTCDate()) } });
+      await tx.subscription.update({ where: { id: s.id }, data: { nextBillingDate: advance(s.nextBillingDate, CYCLE_FREQ[s.billingCycle], s.anchorDay ?? s.nextBillingDate.getUTCDate()) } });
       await audit(tx, user.id, "charge", "Subscription", s.id, { amount: v.amount });
     });
     refresh();
@@ -221,6 +229,7 @@ export async function recordSubscriptionCharge(input: unknown) {
 
 export async function undoSubscriptionCharge(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const c = await tx.subscriptionCharge.findFirst({ where: { id, subscription: { userId: user.id } } });

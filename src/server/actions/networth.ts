@@ -7,12 +7,13 @@ import { audit } from "@/lib/audit";
 import { dayFromString, todayIn } from "@/lib/dates";
 import { assetSchema, liabilitySchema } from "@/lib/validation/finance";
 import { snapshotNetWorth } from "@/lib/services/networth";
-import { opt } from "../guards";
+import { opt, assertId } from "../guards";
 
 const refresh = () => revalidatePath("/", "layout");
 
 export async function saveAsset(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = assetSchema.parse(input);
     const data = { name: v.name, type: v.type, value: v.value, valuedAt: dayFromString(v.valuedAt), notes: opt(v.notes) };
@@ -34,6 +35,7 @@ export async function saveAsset(id: string | null, input: unknown) {
 
 export async function deleteAsset(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.asset.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Asset not found.");
@@ -44,6 +46,7 @@ export async function deleteAsset(id: string) {
 
 export async function saveLiability(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = liabilitySchema.parse(input);
     const data = { name: v.name, type: v.type, balance: v.balance, asOf: dayFromString(v.asOf), notes: opt(v.notes) };
@@ -65,6 +68,7 @@ export async function saveLiability(id: string | null, input: unknown) {
 
 export async function deleteLiability(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.liability.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Liability not found.");

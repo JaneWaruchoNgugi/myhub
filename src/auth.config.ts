@@ -16,14 +16,22 @@ export const authConfig = {
         if (loggedIn) return Response.redirect(new URL("/dashboard", request.nextUrl));
         return true;
       }
+      // APIs answer 401 instead of redirecting to the sign-in page.
+      if (!loggedIn && pathname.startsWith("/api/")) return Response.json({ error: "Unauthorized" }, { status: 401 });
       return loggedIn;
     },
     jwt({ token, user }) {
-      if (user?.id) token.uid = user.id;
+      if (user?.id) {
+        token.uid = user.id;
+        token.sv = user.sv ?? 0;
+      }
       return token;
     },
     session({ session, token }) {
-      if (token.uid && session.user) session.user.id = token.uid as string;
+      if (token.uid && session.user) {
+        session.user.id = token.uid as string;
+        session.user.sv = (token.sv as number | undefined) ?? 0;
+      }
       return session;
     },
   },

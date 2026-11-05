@@ -10,7 +10,7 @@ import { D, dec } from "@/lib/money";
 import { investmentCreateSchema, investmentSchema, investmentTxnSchema, priceUpdateSchema, watchlistSchema } from "@/lib/validation/obligations";
 import { recomputeHolding } from "@/lib/services/investments";
 import { systemCategory } from "@/lib/services/defaults";
-import { opt, ownedAccount } from "../guards";
+import { opt, ownedAccount, assertId } from "../guards";
 
 const refresh = () => revalidatePath("/", "layout");
 type Tx = Prisma.TransactionClient;
@@ -18,7 +18,7 @@ type Tx = Prisma.TransactionClient;
 async function setPrice(tx: Tx, investmentId: string, date: Date, price: Prisma.Decimal | string, source = "manual") {
   await tx.investmentPrice.upsert({ where: { investmentId_date: { investmentId, date } }, update: { price, source }, create: { investmentId, date, price, source } });
   const latest = await tx.investmentPrice.findFirst({ where: { investmentId }, orderBy: { date: "desc" } });
-  if (latest) await tx.investment.update({ where: { id: investmentId }, data: { currentPrice: latest.price, priceUpdatedAt: new Date(), priceSource: latest.source } });
+  if (latest) await tx.investment.update({ where: { id: investmentId }, data: { currentPrice: latest.price, priceUpdatedAt: latest.date, priceSource: latest.source } });
 }
 
 async function addTrade(
@@ -84,6 +84,7 @@ export async function createInvestment(input: unknown) {
 
 export async function updateInvestment(id: string, input: unknown) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const v = investmentSchema.parse(input);
     const inv = await prisma.investment.findFirst({ where: { id, userId: user.id } });
@@ -97,6 +98,7 @@ export async function updateInvestment(id: string, input: unknown) {
 
 export async function deleteInvestment(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const inv = await tx.investment.findFirst({ where: { id, userId: user.id }, include: { transactions: true } });
@@ -125,6 +127,7 @@ export async function addInvestmentTxn(input: unknown) {
 
 export async function deleteInvestmentTxn(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const t = await tx.investmentTransaction.findFirst({ where: { id, userId: user.id } });
@@ -159,6 +162,7 @@ export async function updatePrice(input: unknown) {
 
 export async function saveWatchlistItem(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = watchlistSchema.parse(input);
     const data = { symbol: v.symbol.toUpperCase(), name: v.name, assetClass: v.assetClass, targetPrice: v.targetPrice || null, lastPrice: v.lastPrice || null, notes: opt(v.notes) };
@@ -173,6 +177,7 @@ export async function saveWatchlistItem(id: string | null, input: unknown) {
 
 export async function deleteWatchlistItem(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.watchlistItem.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Watchlist item not found.");

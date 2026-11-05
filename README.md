@@ -207,7 +207,9 @@ The UI already shows each price's source and the date it was last updated.
   - Login timing is constant whether or not the email exists.
   - Sign-in is rate limited per IP and per email; registration is rate limited per IP.
   - Sessions are JWT cookies that expire after 7 days.
-- **Authorization:** the middleware redirects unauthenticated page requests. Every server action and API route also loads the session user and scopes **every** query by `userId`. IDs from the client are always looked up together with the owner, so another user's ID returns "not found".
+  - Changing your password signs out every device: sessions carry a version number that is checked on each request.
+  - Sign-ins and failed sign-ins are recorded in the activity log.
+- **Authorization:** the middleware redirects unauthenticated page requests. Every server action and API route also loads the session user and scopes **every** query by `userId`. IDs from the client must be plain id strings, and are always looked up together with the owner, so another user's ID returns "not found".
 - **Validation:** every server action and API route validates input with Zod. Monetary amounts are bounded and never parsed as floats.
 - **Integrity:**
   - Multi-record financial changes run inside database transactions.
@@ -226,6 +228,13 @@ Limits to be aware of:
 
 - The rate limiter is in-memory. That is fine for one server instance; use Redis or Upstash if you scale out.
 - There is no two-factor authentication or email verification yet.
+- The register page says when an email is already registered. That is acceptable for a personal server, and it is rate limited. Turn registration off once your account exists.
+
+Dependency advisories as of November 2026 (`npm audit --omit=dev`). The fixable ones were applied, including next-auth 5.0.0-beta.32. The rest need major upgrades, so they're tracked here rather than forced:
+
+- **Next.js 15 bundles an older PostCSS.** PostCSS only processes the app's own stylesheets at build time, never user input. Fixed by upgrading to Next 16.
+- **Zod 3 can use too much memory on huge arrays.** Every array schema here has a maximum size, and server-action bodies are capped at 1 MB. Fixed by upgrading to Zod 4.
+- **The Prisma 6 CLI depends on deepmerge-ts.** This is developer tooling only and isn't used at runtime. Fixed by upgrading to Prisma 7.
 
 ---
 
@@ -248,7 +257,7 @@ tests/               Vitest unit tests
 
 ## Build status and what remains
 
-All five build phases are complete. Typecheck, lint, unit tests and `next build` all pass.
+All five build phases are complete. Typecheck, lint, unit tests, the browser tests and `next build` all pass.
 
 | Phase | Scope | Status |
 | --- | --- | --- |
@@ -257,6 +266,28 @@ All five build phases are complete. Typecheck, lint, unit tests and `next build`
 | 3 | Savings, loans, investments, bills, subscriptions, net worth | Done |
 | 4 | Calendar, tasks, notifications, developer workspace | Done |
 | 5 | Notes, document vault, reports, settings, scheduled job | Done |
+
+### Review pass (November 2026)
+
+After the build, every module went through a product, financial, functional and security review. The main changes:
+
+- **Money integrity.** A funded savings goal can't be moved to another account, and a loan with repayments can't switch between borrowed and lent. Investment prices keep the date you entered. Bills and subscriptions remember their billing day, so a bill due on the 31st returns to the 31st after a short month. Savings contributions can't earmark more than the account holds. Deleting a goal keeps the transfers it made.
+- **Security.** Every server action rejects record ids that aren't plain strings. Changing your password signs out every other session (`User.sessionVersion`). Unauthenticated API calls get a 401, not a login page. Uploads are checked by extension and file signature and rate-limited, downloads are attachment-only with a sandbox CSP, and the app sends CSP, HSTS, frame and referrer headers.
+- **Interface.** A Ctrl/⌘ K page switcher, tighter dashboard cards that fit on a phone, a month-on-month change on net worth, chart legends that don't truncate, filter toolbars that wrap cleanly, keyboard drag between Kanban columns with readable screen-reader announcements, a Tasks page, a Notifications page with dismiss, and Notes opening the first note on desktop.
+- **Functional tests.** Browser tests in `tests/e2e/` click through every module: forms, filters, search, edit, delete, undo, CSV export, uploads, user isolation and every navigation link (see below).
+
+### End-to-end browser tests
+
+`tests/e2e/fresh.js` registers a new user and checks transfers, dashboards, CSV export isolation, 401s on the API and sign-out after a password change. `tests/e2e/demo.js` signs in as the demo user and exercises every module. They need Playwright (`npm i -D playwright && npx playwright install chromium`) and a running server:
+
+```bash
+npm run build && npm start &          # or npm run dev
+npm run db:seed                       # demo.js expects fresh demo data
+node tests/e2e/fresh.js && node tests/e2e/demo.js
+npm run db:seed                       # the demo run changes demo data; reset it afterwards
+```
+
+Set `E2E_BASE_URL` to test another host.
 
 Not built yet, in rough priority order:
 
@@ -267,4 +298,4 @@ Not built yet, in rough priority order:
 5. **Two-factor authentication, email verification and password reset by email.** These need an email provider.
 6. **A shared rate limiter** for multi-instance deployments.
 7. **Recurring calendar events with per-occurrence exceptions.** Recurring events repeat as a series; you can't edit one occurrence on its own.
-8. **End-to-end browser tests.** The calculations are unit-tested; the UI has been tested manually.
+8. **Running the browser tests in CI.** They run locally (above) but aren't wired into a CI pipeline, because there is no repository yet.

@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { SidebarNav } from "./sidebar";
 import { Logo } from "./logo";
+import { CommandMenu } from "./command-menu";
 import { NAV, MOBILE_TABS } from "./nav";
 import { initials, cn } from "@/lib/utils";
 import { signOutAction } from "@/server/actions/auth";
@@ -48,8 +49,9 @@ export function Topbar({ user, unread, isDemo }: { user: { name: string | null; 
           </DialogPrimitive.Portal>
         </DialogPrimitive.Root>
 
-        <div className="min-w-0 flex-1">
-          <span className="truncate text-sm font-semibold lg:hidden">{pageTitle(pathname)}</span>
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <span className="truncate text-sm font-semibold md:hidden">{pageTitle(pathname)}</span>
+          <CommandMenu />
         </div>
 
         <DropdownMenu>

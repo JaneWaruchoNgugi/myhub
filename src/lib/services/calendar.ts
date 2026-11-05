@@ -115,7 +115,7 @@ export async function calendarItems(userId: string, prefs: Prefs, from: Date, to
         });
       }
       if (e.recurrence === "NONE") break;
-      s = advance(s, e.recurrence as Freq);
+      s = advance(s, e.recurrence as Freq, e.start.getUTCDate());
       n++;
     }
   }
@@ -126,7 +126,7 @@ export async function calendarItems(userId: string, prefs: Prefs, from: Date, to
       if (d >= from)
         items.push({ id: `bill:${b.id}:${n}`, kind: "bill", refId: b.id, title: `${b.name} · ${formatMoney(b.amount.toString(), mp, { compact: true })}`, start: day(d), allDay: true, editable: n === 0, category: "BILL", url: "/bills", overdue: n === 0 && d < new Date(`${z(now).slice(0, 10)}T00:00:00Z`) });
       if (b.recurrence === "NONE") break;
-      d = advance(d, b.recurrence as Freq, b.nextDueDate.getUTCDate());
+      d = advance(d, b.recurrence as Freq, b.anchorDay ?? b.nextDueDate.getUTCDate());
       n++;
     }
   }
@@ -147,7 +147,7 @@ export async function calendarItems(userId: string, prefs: Prefs, from: Date, to
     let n = 0;
     while (d <= to && n < 60) {
       if (d >= from) items.push({ id: `sub:${sub.id}:${n}`, kind: "subscription", refId: sub.id, title: `${sub.name} renews · ${formatMoney(sub.amount.toString(), mp, { compact: true })}`, start: day(d), allDay: true, editable: false, category: "SUBSCRIPTION", url: "/subscriptions" });
-      d = advance(d, CYCLE[sub.billingCycle], sub.nextBillingDate.getUTCDate());
+      d = advance(d, CYCLE[sub.billingCycle], sub.anchorDay ?? sub.nextBillingDate.getUTCDate());
       n++;
     }
   }

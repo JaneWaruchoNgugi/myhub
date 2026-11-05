@@ -19,6 +19,7 @@ import { passwordSchema, preferenceSchema, profileSchema } from "@/lib/validatio
 import { categorySchema } from "@/lib/validation/finance";
 import { changePassword, updatePreferences, updateProfile } from "@/server/actions/workspace";
 import { createCategory, deleteCategory, updateCategory } from "@/server/actions/accounts";
+import { signOutAction } from "@/server/actions/auth";
 import { formatMoney } from "@/lib/format";
 import type { Prefs } from "@/lib/session";
 
@@ -133,13 +134,14 @@ function PasswordCard({ disabled }: { disabled: boolean }) {
         <CardTitle className="flex items-center gap-2 text-base">
           <KeyRound className="size-4" /> Password
         </CardTitle>
-        <CardDescription>Use at least 10 characters. A passphrase of several words works well.</CardDescription>
+        <CardDescription>Use at least 10 characters. Changing it signs you out everywhere, including here.</CardDescription>
       </CardHeader>
       <CardContent>
         <form
           className="grid gap-4"
           onSubmit={f.handleSubmit(async (v) => {
-            if (await submit(() => changePassword(v), (k, m) => f.setError(k as "currentPassword", { message: m }))) f.reset();
+            // Every session (including this one) is signed out after a password change.
+            if (await submit(() => changePassword(v), (k, m) => f.setError(k as "currentPassword", { message: m }))) await signOutAction();
           })}
         >
           <Field label="Current password" htmlFor="pw-cur" error={e.currentPassword?.message}>

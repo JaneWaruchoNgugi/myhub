@@ -10,7 +10,7 @@ import { goalStats } from "@/lib/services/savings";
 import { accountBalanceTx } from "@/lib/services/ledger";
 import { dec, sum } from "@/lib/money";
 import { formatMoney } from "@/lib/format";
-import { opt, ownedAccount } from "../guards";
+import { opt, ownedAccount, assertId } from "../guards";
 
 const refresh = () => revalidatePath("/", "layout");
 
@@ -29,11 +29,15 @@ export async function createGoal(input: unknown) {
 
 export async function updateGoal(id: string, input: unknown) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const v = savingsGoalSchema.parse(input);
-    const g = await prisma.savingsGoal.findFirst({ where: { id, userId: user.id } });
+    const g = await prisma.savingsGoal.findFirst({ where: { id, userId: user.id }, include: { contributions: true } });
     if (!g) fail("Goal not found.");
     await ownedAccount(prisma, user.id, v.accountId);
+    // Moving a funded goal to another account would earmark money that isn't there.
+    if (v.accountId !== g.accountId && goalStats(g, new Date()).saved.gt(0))
+      fail("This goal already holds money in its current account. Withdraw it to the new account first, then change the account.");
     await prisma.savingsGoal.update({
       where: { id },
       data: { name: v.name, description: opt(v.description), targetAmount: v.targetAmount, targetDate: v.targetDate ? dayFromString(v.targetDate) : null, priority: v.priority, status: v.status, isEmergencyFund: v.isEmergencyFund, accountId: v.accountId },
@@ -44,6 +48,7 @@ export async function updateGoal(id: string, input: unknown) {
 
 export async function deleteGoal(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const g = await tx.savingsGoal.findFirst({ where: { id, userId: user.id }, include: { contributions: true } });
@@ -119,6 +124,7 @@ export async function addContribution(input: unknown) {
 
 export async function deleteContribution(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const c = await tx.savingsContribution.findFirst({ where: { id, userId: user.id }, include: { goal: { include: { contributions: true } } } });

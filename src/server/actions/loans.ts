@@ -7,7 +7,7 @@ import { audit } from "@/lib/audit";
 import { dayFromString } from "@/lib/dates";
 import { dec, sum } from "@/lib/money";
 import { loanSchema, repaymentSchema } from "@/lib/validation/obligations";
-import { opt, ownedAccount } from "../guards";
+import { opt, ownedAccount, assertId } from "../guards";
 import { deleteRepaymentTx, recordRepaymentTx } from "../ops/loans";
 
 const refresh = () => revalidatePath("/", "layout");
@@ -60,6 +60,7 @@ export async function createLoan(input: unknown) {
 
 export async function updateLoan(id: string, input: unknown) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const v = loanSchema.parse(input);
     await prisma.$transaction(async (tx) => {
@@ -67,6 +68,8 @@ export async function updateLoan(id: string, input: unknown) {
       if (!loan) fail("Loan not found.");
       const repaid = sum(loan.repayments.map((r) => r.principalAmount));
       if (dec(v.principal).lt(repaid)) fail("Principal can't be less than what has already been repaid.");
+      // Repayment transactions were booked for the original direction (expense vs income); flipping it would corrupt them.
+      if (v.direction !== loan.direction && loan.repayments.length) fail("You can't switch between borrowed and lent once repayments are recorded. Delete the repayments first, or create a new loan.");
       const accountId = opt(v.accountId);
       if (accountId) await ownedAccount(tx, user.id, accountId);
       let disbursementTxnId = loan.disbursementTxnId;
@@ -115,6 +118,7 @@ export async function updateLoan(id: string, input: unknown) {
 
 export async function deleteLoan(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const loan = await tx.loan.findFirst({ where: { id, userId: user.id }, include: { repayments: true } });
@@ -141,6 +145,7 @@ export async function addRepayment(input: unknown) {
 
 export async function deleteRepayment(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const bp = await tx.billPayment.findFirst({ where: { loanRepaymentId: id, userId: user.id } });

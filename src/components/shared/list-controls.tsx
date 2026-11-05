@@ -70,12 +70,12 @@ type Controls<T> = ReturnType<typeof useListControls<T>>;
 
 export function ListToolbar<T>({ controls, placeholder = "Search…", children }: { controls: Controls<T>; placeholder?: string; children?: React.ReactNode }) {
   return (
-    <div className="mb-4 flex flex-col gap-2 lg:flex-row lg:items-center">
-      <div className="relative w-full lg:max-w-xs">
+    <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="relative w-full sm:w-64">
         <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
         <Input value={controls.q} onChange={(e) => controls.setQ(e.target.value)} placeholder={placeholder} className="bg-card pl-9" aria-label="Search" />
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="contents">
         {controls.filterDefs.map((f) => (
           <Select key={f.key} value={controls.filters[f.key] || ALL} onValueChange={(v) => controls.setFilter(f.key, v)}>
             <SelectTrigger className="bg-card h-9 w-auto min-w-[130px]" aria-label={f.label}>
@@ -111,7 +111,7 @@ export function ListToolbar<T>({ controls, placeholder = "Search…", children }
           </Button>
         ) : null}
       </div>
-      {children ? <div className="flex flex-wrap items-center gap-2 lg:ml-auto">{children}</div> : null}
+      {children ? <div className="ml-auto flex flex-wrap items-center gap-2">{children}</div> : null}
     </div>
   );
 }

@@ -30,8 +30,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const user = await prisma.user.findUnique({ where: { email } });
         // Compare against a dummy hash when the user doesn't exist to keep timing similar.
         const ok = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH);
-        if (!user || !ok) return null;
-        return { id: user.id, email: user.email, name: user.name };
+        if (!user) return null;
+        // Security trail visible to the user under Settings → Activity log.
+        await prisma.auditLog.create({ data: { userId: user.id, action: ok ? "login" : "login_failed", entity: "User", entityId: user.id } }).catch(() => undefined);
+        if (!ok) return null;
+        return { id: user.id, email: user.email, name: user.name, sv: user.sessionVersion };
       },
     }),
   ],

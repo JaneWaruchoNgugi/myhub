@@ -5,7 +5,7 @@ import { requireUser } from "@/lib/session";
 import { fail, handle } from "@/lib/action";
 import { addMonths, dayFromString } from "@/lib/dates";
 import { budgetSchema } from "@/lib/validation/finance";
-import { opt } from "../guards";
+import { opt, assertId } from "../guards";
 
 const refresh = () => revalidatePath("/", "layout");
 
@@ -16,6 +16,7 @@ async function checkCategories(userId: string, ids: string[]) {
 
 export async function saveBudget(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = budgetSchema.parse(input);
     await checkCategories(user.id, v.items.map((i) => i.categoryId));
@@ -41,6 +42,7 @@ export async function saveBudget(id: string | null, input: unknown) {
 
 export async function copyBudgetToNextMonth(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const b = await prisma.budget.findFirst({ where: { id, userId: user.id }, include: { items: true } });
     if (!b) fail("Budget not found.");
@@ -55,6 +57,7 @@ export async function copyBudgetToNextMonth(id: string) {
 
 export async function deleteBudget(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const b = await prisma.budget.findFirst({ where: { id, userId: user.id } });
     if (!b) fail("Budget not found.");

@@ -147,6 +147,7 @@ function UploadDialog({ open, onOpenChange, maxMb }: { open: boolean; onOpenChan
       setCategory("RECEIPT");
       setDescription("");
       setError(null);
+      setBusy(false);
     }
   }, [open]);
 
@@ -166,14 +167,15 @@ function UploadDialog({ open, onOpenChange, maxMb }: { open: boolean; onOpenChan
       const body = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         setError(body.error ?? "Upload failed.");
+        setBusy(false);
         return;
       }
+      // Stay busy while the dialog closes so a second click can't upload the file twice.
       toast.success("Document uploaded");
       onOpenChange(false);
       router.refresh();
     } catch {
       setError("Network error. Please try again.");
-    } finally {
       setBusy(false);
     }
   }

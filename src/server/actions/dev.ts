@@ -6,13 +6,14 @@ import { requireUser } from "@/lib/session";
 import { fail, handle } from "@/lib/action";
 import { dayFromString } from "@/lib/dates";
 import { bookmarkSchema, devGoalSchema, devProjectSchema, devTaskSchema, DEV_TASK_STATUSES, learningSchema, snippetSchema } from "@/lib/validation/productivity";
-import { opt, tagList } from "../guards";
+import { opt, tagList, assertId } from "../guards";
 
 const refresh = () => revalidatePath("/", "layout");
 const optDay = (v?: string) => (v ? dayFromString(v) : null);
 
 export async function saveProject(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = devProjectSchema.parse(input);
     const data = {
@@ -37,6 +38,7 @@ export async function saveProject(id: string | null, input: unknown) {
 
 export async function deleteProject(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.devProject.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Project not found.");
@@ -46,6 +48,7 @@ export async function deleteProject(id: string) {
 
 export async function saveDevTask(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = devTaskSchema.parse(input);
     const projectId = opt(v.projectId);
@@ -65,6 +68,7 @@ export async function saveDevTask(id: string | null, input: unknown) {
 
 export async function deleteDevTask(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.devTask.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Task not found.");
@@ -93,6 +97,7 @@ export async function moveDevTask(input: unknown) {
 
 export async function saveBookmark(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = bookmarkSchema.parse(input);
     const data = { title: v.title, url: v.url, description: opt(v.description), category: v.category, tags: tagList(v.tags), isFavourite: v.isFavourite };
@@ -107,16 +112,18 @@ export async function saveBookmark(id: string | null, input: unknown) {
 
 export async function toggleFavourite(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const b = await prisma.bookmark.findFirst({ where: { id, userId: user.id } });
     if (!b) fail("Bookmark not found.");
     await prisma.bookmark.update({ where: { id }, data: { isFavourite: !b.isFavourite } });
     refresh();
-  }, "Updated");
+  }); // the client words the toast, since it knows which way the toggle went
 }
 
 export async function deleteBookmark(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.bookmark.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Bookmark not found.");
@@ -126,6 +133,7 @@ export async function deleteBookmark(id: string) {
 
 export async function saveLearning(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = learningSchema.parse(input);
     const progress = v.status === "COMPLETED" ? 100 : v.progress;
@@ -141,6 +149,7 @@ export async function saveLearning(id: string | null, input: unknown) {
 
 export async function deleteLearning(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.learningGoal.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Item not found.");
@@ -150,6 +159,7 @@ export async function deleteLearning(id: string) {
 
 export async function saveSnippet(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = snippetSchema.parse(input);
     const data = { title: v.title, language: v.language.toLowerCase(), code: v.code, description: opt(v.description), tags: tagList(v.tags) };
@@ -164,6 +174,7 @@ export async function saveSnippet(id: string | null, input: unknown) {
 
 export async function deleteSnippet(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.codeSnippet.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Snippet not found.");
@@ -173,6 +184,7 @@ export async function deleteSnippet(id: string) {
 
 export async function saveDevGoal(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = devGoalSchema.parse(input);
     const data = { title: v.title, description: opt(v.description), type: v.type, status: v.status, progress: v.status === "COMPLETED" ? 100 : v.progress, targetDate: optDay(v.targetDate) };
@@ -187,6 +199,7 @@ export async function saveDevGoal(id: string | null, input: unknown) {
 
 export async function deleteDevGoal(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.devGoal.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Goal not found.");

@@ -1,6 +1,6 @@
 "use client";
 import * as React from "react";
-import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor, closestCorners, useDroppable, useSensor, useSensors, type DragEndEvent, type DragOverEvent, type DragStartEvent } from "@dnd-kit/core";
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, TouchSensor, closestCorners, useDroppable, useSensor, useSensors, type DragEndEvent, type DragOverEvent, type DragStartEvent, type KeyboardCoordinateGetter, type Announcements } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Plus } from "lucide-react";
@@ -36,10 +36,41 @@ export function KanbanView({ rows, projects }: { rows: DevTask[]; projects: Opti
 
   React.useEffect(() => setCols(group(rows)), [rows]);
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
-
   const visible = (id: string) => project === ALL || (project === "none" ? !byId.get(id)?.projectId : byId.get(id)?.projectId === project);
   const colOf = (id: string) => (id in cols ? id : Object.keys(cols).find((k) => cols[k].includes(id)));
+  const colOfRef = React.useRef(colOf);
+  colOfRef.current = colOf;
+
+  // Left/Right jump a whole column; Up/Down reorder within it. Targeting the column (not a card in it)
+  // keeps the keyboard drag from bouncing back once the card is inserted into the new column.
+  const coordinateGetter = React.useCallback<KeyboardCoordinateGetter>((event, args) => {
+    if (event.code !== "ArrowRight" && event.code !== "ArrowLeft") return sortableKeyboardCoordinates(event, args);
+    event.preventDefault();
+    const { active, droppableRects } = args.context;
+    const order: string[] = DEV_TASK_STATUS_OPTS.map((o) => o.value);
+    const cur = active ? colOfRef.current(String(active.id)) : undefined;
+    const next = cur ? order[order.indexOf(cur) + (event.code === "ArrowRight" ? 1 : -1)] : undefined;
+    const rect = next ? droppableRects.get(next) : undefined;
+    if (!rect) return args.currentCoordinates;
+    return { x: rect.left + 8, y: rect.top + 8 };
+  }, []);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }), useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }), useSensor(KeyboardSensor, { coordinateGetter }));
+
+  const nameOf = (id: string | number | undefined) => {
+    const k = String(id ?? "");
+    return byId.get(k)?.title ?? DEV_TASK_STATUS_OPTS.find((o) => o.value === k)?.label ?? "the board";
+  };
+  const columnName = (id: string | number | undefined) => {
+    const c = colOfRef.current(String(id ?? ""));
+    return c ? labelOf(DEV_TASK_STATUS_OPTS, c) : "the board";
+  };
+  const announcements: Announcements = {
+    onDragStart: ({ active }) => `Picked up ${nameOf(active.id)}. Use the arrow keys to move it, Space to drop, Escape to cancel.`,
+    onDragOver: ({ active, over }) => (over ? `${nameOf(active.id)} is in ${columnName(over.id)}.` : `${nameOf(active.id)} is not over a column.`),
+    onDragEnd: ({ active, over }) => (over ? `Dropped ${nameOf(active.id)} in ${columnName(over.id)}.` : `Dropped ${nameOf(active.id)}.`),
+    onDragCancel: ({ active }) => `Cancelled. ${nameOf(active.id)} was returned to where it started.`,
+  };
 
   function onStart(e: DragStartEvent) {
     setActive(String(e.active.id));
@@ -102,7 +133,7 @@ export function KanbanView({ rows, projects }: { rows: DevTask[]; projects: Opti
           <Plus /> Add item
         </Button>
       </div>
-      <DndContext sensors={sensors} collisionDetection={closestCorners} onDragStart={onStart} onDragOver={onOver} onDragEnd={onEnd} onDragCancel={() => (setActive(null), setCols(group(rows)))}>
+      <DndContext accessibility={{ announcements }} sensors={sensors} collisionDetection={closestCorners} onDragStart={onStart} onDragOver={onOver} onDragEnd={onEnd} onDragCancel={() => (setActive(null), setCols(group(rows)))}>
         <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-4 sm:mx-0 sm:px-0">
           {DEV_TASK_STATUS_OPTS.map((col) => {
             const ids = cols[col.value].filter(visible);

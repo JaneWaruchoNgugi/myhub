@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { AlertTriangle, ArrowRight, Banknote, CalendarClock, CreditCard, Landmark, PiggyBank, Scale, TrendingUp, Wallet, Receipt, HandCoins, FolderKanban, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, ArrowRight, Banknote, CalendarClock, CreditCard, Landmark, PiggyBank, Scale, TrendingUp, TrendingDown, Wallet, Receipt, HandCoins, FolderKanban, CheckCircle2 } from "lucide-react";
 import { requireUserPage } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { computeNetWorth } from "@/lib/services/networth";
@@ -46,7 +46,7 @@ export default async function DashboardPage() {
     incomeExpense(uid, monthStart, monthEnd),
     monthlySeries(uid, addMonths(monthStart, -5, 1), monthEnd),
     byCategory(uid, "EXPENSE", monthStart, monthEnd),
-    prisma.netWorthSnapshot.findMany({ where: { userId: uid }, orderBy: { date: "asc" }, take: 24 }),
+    prisma.netWorthSnapshot.findMany({ where: { userId: uid }, orderBy: { date: "desc" }, take: 24 }).then((r) => r.reverse()),
     prisma.savingsGoal.findMany({ where: { userId: uid, status: { in: ["ACTIVE", "COMPLETED"] } }, include: { contributions: true }, orderBy: [{ isEmergencyFund: "desc" }, { priority: "desc" }] }),
     prisma.investment.findMany({ where: { userId: uid }, include: { transactions: true } }),
     prisma.loan.findMany({ where: { userId: uid, status: "ACTIVE" }, include: { repayments: true } }),
@@ -78,6 +78,9 @@ export default async function DashboardPage() {
   const debtProgress = borrowedPrincipal.isZero() ? 0 : sum(borrowed.map((l) => loanSummary(l, today).principalRepaid)).div(borrowedPrincipal).times(100).toNumber();
   const fmt = (v: { toString(): string } | string) => formatMoney(v.toString(), mp);
   const nwPoints = snapshots.map((s) => ({ date: s.date.toISOString(), netWorth: s.netWorth.toString() }));
+  // Change since the last snapshot taken before this month started.
+  const prevSnap = [...snapshots].reverse().find((s) => s.date < startOfMonth(today));
+  const nwChange = prevSnap ? nw.netWorth.minus(prevSnap.netWorth) : null;
 
   if (accountCount === 0)
     return (
@@ -131,7 +134,14 @@ export default async function DashboardPage() {
               <div className="flex items-center gap-2 text-xs font-medium tracking-wide text-indigo-100 uppercase">
                 <Scale className="size-4" /> Net worth
               </div>
-              <div className="mt-3 text-3xl font-semibold tracking-tight tabular">{fmt(nw.netWorth)}</div>
+              <div className="mt-3 text-[28px] leading-tight font-semibold tracking-tight break-words tabular sm:text-3xl">{fmt(nw.netWorth)}</div>
+              {nwChange ? (
+                <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-indigo-50 tabular">
+                  {nwChange.isNeg() ? <TrendingDown className="size-3.5" /> : <TrendingUp className="size-3.5" />}
+                  {nwChange.isNeg() ? "" : "+"}
+                  {fmt(nwChange)} since last month
+                </div>
+              ) : null}
             </div>
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-lg bg-white/10 px-3 py-2">

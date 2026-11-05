@@ -63,6 +63,7 @@ export const budgetSchema = z.object({
   items: z
     .array(z.object({ categoryId: id, limit: money }))
     .min(1, "Add at least one category limit")
+    .max(200, "Too many categories")
     .refine((items) => new Set(items.map((i) => i.categoryId)).size === items.length, "Each category can only appear once"),
 });
 

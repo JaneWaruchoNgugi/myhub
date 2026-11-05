@@ -50,6 +50,18 @@ export function NotesView({ rows }: { rows: Row[] }) {
     setMode(d.id && d.content ? "preview" : "write");
   }
 
+  // On wide screens the editor pane is always visible, so open the first note instead of an empty pane.
+  const autoOpened = React.useRef(false);
+  React.useEffect(() => {
+    if (autoOpened.current || draft || !rows[0] || !window.matchMedia("(min-width: 1024px)").matches) return;
+    autoOpened.current = true;
+    const n = rows[0];
+    const d = { id: n.id, title: n.title, content: n.content, category: n.category, isPinned: n.isPinned };
+    setDraft(d);
+    setSaved(d);
+    setMode(n.content ? "preview" : "write");
+  }, [rows, draft]);
+
   const save = React.useCallback(async () => {
     if (!draft) return;
     if (!draft.title.trim()) return toast.error("Give the note a title.");

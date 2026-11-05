@@ -7,12 +7,13 @@ import { fail, handle } from "@/lib/action";
 import { audit } from "@/lib/audit";
 import { documentMetaSchema, noteSchema, passwordSchema, preferenceSchema, profileSchema } from "@/lib/validation/productivity";
 import { getStorage } from "@/lib/storage";
-import { opt } from "../guards";
+import { opt, assertId } from "../guards";
 
 const refresh = () => revalidatePath("/", "layout");
 
 export async function saveNote(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = noteSchema.parse(input);
     const data = { title: v.title, content: v.content, category: opt(v.category), isPinned: v.isPinned };
@@ -31,16 +32,18 @@ export async function saveNote(id: string | null, input: unknown) {
 
 export async function togglePin(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const n = await prisma.note.findFirst({ where: { id, userId: user.id } });
     if (!n) fail("Note not found.");
     await prisma.note.update({ where: { id }, data: { isPinned: !n.isPinned } });
     refresh();
-  }, "Updated");
+  }); // the client words the toast, since it knows which way the toggle went
 }
 
 export async function deleteNote(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.note.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Note not found.");
@@ -50,6 +53,7 @@ export async function deleteNote(id: string) {
 
 export async function updateDocument(id: string, input: unknown) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const v = documentMetaSchema.parse(input);
     const r = await prisma.document.updateMany({ where: { id, userId: user.id }, data: { name: v.name, category: v.category, description: opt(v.description) } });
@@ -60,6 +64,7 @@ export async function updateDocument(id: string, input: unknown) {
 
 export async function deleteDocument(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const d = await prisma.document.findFirst({ where: { id, userId: user.id } });
     if (!d) fail("Document not found.");
@@ -89,10 +94,11 @@ export async function changePassword(input: unknown) {
     const u = await prisma.user.findUniqueOrThrow({ where: { id: user.id } });
     if (!(await bcrypt.compare(v.currentPassword, u.passwordHash))) fail("Your current password is incorrect.");
     await prisma.$transaction(async (tx) => {
-      await tx.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(v.newPassword, 12) } });
+      // Bumping the session version signs out every device, including this one.
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(v.newPassword, 12), sessionVersion: { increment: 1 } } });
       await audit(tx, user.id, "update", "User", user.id, { field: "password" });
     });
-  }, "Password changed");
+  }, "Password changed. Sign in again with your new password.");
 }
 
 export async function updatePreferences(input: unknown) {

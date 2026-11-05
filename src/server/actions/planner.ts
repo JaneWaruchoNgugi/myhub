@@ -6,7 +6,7 @@ import { requireUser } from "@/lib/session";
 import { fail, handle } from "@/lib/action";
 import { advance, zonedToInstant, type Freq } from "@/lib/dates";
 import { eventSchema, taskSchema } from "@/lib/validation/productivity";
-import { opt } from "../guards";
+import { opt, assertId } from "../guards";
 
 const refresh = () => revalidatePath("/", "layout");
 
@@ -25,6 +25,7 @@ function taskDates(v: { startDate?: string; dueDate?: string; allDay: boolean },
 
 export async function saveTask(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = taskSchema.parse(input);
     const dates = taskDates(v, user.prefs.timezone);
@@ -52,7 +53,7 @@ export async function saveTask(id: string | null, input: unknown) {
 
 async function spawnNext(userId: string, t: { title: string; description: string | null; startDate: Date | null; dueDate: Date | null; allDay: boolean; priority: "LOW" | "MEDIUM" | "HIGH" | "URGENT"; category: "PERSONAL" | "WORK" | "HEALTH" | "FINANCE" | "LEARNING" | "ERRAND" | "OTHER"; reminderMinutes: number | null; recurrence: string }) {
   if (t.recurrence === "NONE" || !t.dueDate) return;
-  const nextDue = advance(t.dueDate, t.recurrence as Freq);
+  const nextDue = advance(t.dueDate, t.recurrence as Freq, t.dueDate.getUTCDate());
   const shift = nextDue.getTime() - t.dueDate.getTime();
   await prisma.task.create({
     data: {
@@ -72,6 +73,7 @@ async function spawnNext(userId: string, t: { title: string; description: string
 
 export async function toggleTask(id: string, done: boolean) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const t = await prisma.task.findFirst({ where: { id, userId: user.id } });
     if (!t) fail("Task not found.");
@@ -83,6 +85,7 @@ export async function toggleTask(id: string, done: boolean) {
 
 export async function deleteTask(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.task.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Task not found.");
@@ -92,6 +95,7 @@ export async function deleteTask(id: string) {
 
 export async function saveEvent(id: string | null, input: unknown) {
   return handle(async () => {
+    if (id !== null) assertId(id);
     const user = await requireUser();
     const v = eventSchema.parse(input);
     const tz = user.prefs.timezone;
@@ -118,6 +122,7 @@ export async function saveEvent(id: string | null, input: unknown) {
 
 export async function deleteEvent(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const r = await prisma.calendarEvent.deleteMany({ where: { id, userId: user.id } });
     if (!r.count) fail("Event not found.");
@@ -169,6 +174,7 @@ export async function moveCalendarItem(input: unknown) {
 
 export async function markNotification(id: string, read: boolean) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.notification.updateMany({ where: { id, userId: user.id }, data: { isRead: read } });
     refresh();
@@ -186,6 +192,7 @@ export async function markAllNotificationsRead() {
 
 export async function deleteNotification(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.notification.updateMany({ where: { id, userId: user.id }, data: { dismissed: true, isRead: true } });
     refresh();

@@ -5,6 +5,8 @@
  */
 import { PrismaClient, Prisma, type Frequency } from "@prisma/client";
 import bcrypt from "bcryptjs";
+import { promises as fs } from "fs";
+import path from "path";
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "../src/lib/services/defaults";
 import { amortize } from "../src/lib/services/loans";
 
@@ -33,6 +35,14 @@ const atTime = (offsetDays: number, h: number, min = 0) => new Date(today.getTim
 async function main() {
   const existing = await prisma.user.findUnique({ where: { email: DEMO_EMAIL } });
   if (existing) {
+    // Vault files for the demo user live under "<userId>/". Remove them so a reset leaves no orphans.
+    if ((process.env.STORAGE_DRIVER ?? "local") === "local") {
+      const dir = path.resolve(process.cwd(), process.env.LOCAL_STORAGE_DIR ?? "./storage", existing.id);
+      await fs.rm(dir, { recursive: true, force: true });
+    } else {
+      const docs = await prisma.document.count({ where: { userId: existing.id } });
+      if (docs) console.warn(`${docs} demo vault file(s) remain in remote storage under ${existing.id}/`);
+    }
     await prisma.user.delete({ where: { id: existing.id } }); // cascades only the demo user's data
     console.log("Removed previous demo data");
   }
@@ -76,6 +86,9 @@ async function main() {
     if (inPast(sal)) t({ type: "INCOME", source: "RECURRING", amount: 185000, date: sal, description: "Salary", accountId: equity, categoryId: inc("Salary"), recurringRuleId: salaryRule.id, occurrenceDate: sal });
     const top = monthDate(o, 26);
     if (inPast(top)) t({ type: "TRANSFER", source: "RECURRING", amount: 30000, date: top, description: "Top up M-Pesa", accountId: equity, toAccountId: mpesa, recurringRuleId: transferRule.id, occurrenceDate: top });
+    // Cash comes from somewhere: a monthly M-Pesa withdrawal keeps the wallet realistic (never negative).
+    const atm = monthDate(o, 1);
+    if (inPast(atm)) t({ type: "TRANSFER", amount: 3000, date: atm, description: "M-Pesa cash withdrawal", accountId: mpesa, toAccountId: cash });
     if (rnd() > 0.45) {
       const d = monthDate(o, between(3, 20));
       if (inPast(d)) t({ type: "INCOME", amount: between(15, 65) * 1000, date: d, description: "Freelance web project", accountId: mpesa, categoryId: inc("Freelancing") });
@@ -113,7 +126,7 @@ async function main() {
 
   // Bills with payment history (each payment linked to exactly one expense)
   const bill = async (name: string, kind: "RENT" | "ELECTRICITY" | "INTERNET" | "WATER", amount: number, dueDay: number, cat: string, account: string, method: string, vary = 0) => {
-    const b = await prisma.bill.create({ data: { userId: uid, name, kind, amount, categoryId: exp(cat), accountId: account, nextDueDate: monthDate(-11, dueDay), recurrence: "MONTHLY", paymentMethod: method } });
+    const b = await prisma.bill.create({ data: { userId: uid, name, kind, amount, categoryId: exp(cat), accountId: account, nextDueDate: monthDate(-11, dueDay), anchorDay: dueDay, recurrence: "MONTHLY", paymentMethod: method } });
     let next = monthDate(-11, dueDay);
     for (let o = -11; o <= 0; o++) {
       const due = monthDate(o, dueDay);
@@ -133,7 +146,7 @@ async function main() {
 
   // Subscriptions with charge history
   const sub = async (name: string, provider: string, amount: number, cycle: "MONTHLY" | "YEARLY", firstOffset: number, dayOfMonth: number, account: string) => {
-    const s = await prisma.subscription.create({ data: { userId: uid, name, provider, amount, billingCycle: cycle, nextBillingDate: monthDate(firstOffset, dayOfMonth), categoryId: exp("Subscriptions"), accountId: account, paymentMethod: "Visa •• 4021" } });
+    const s = await prisma.subscription.create({ data: { userId: uid, name, provider, amount, billingCycle: cycle, nextBillingDate: monthDate(firstOffset, dayOfMonth), anchorDay: dayOfMonth, categoryId: exp("Subscriptions"), accountId: account, paymentMethod: "Visa •• 4021" } });
     let o = firstOffset;
     let next = monthDate(o, dayOfMonth);
     while (next <= today) {

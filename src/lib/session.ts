@@ -43,7 +43,8 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const id = session?.user?.id;
   if (!id) return null;
   const user = await prisma.user.findUnique({ where: { id }, include: { preference: true } });
-  if (!user) return null;
+  // A deleted user, or a session issued before the last password change, is no longer valid.
+  if (!user || (session.user.sv ?? 0) !== user.sessionVersion) return null;
   return {
     id: user.id,
     email: user.email,
@@ -56,7 +57,12 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 /** For pages: redirects to login when there is no session. */
 export async function requireUserPage(): Promise<CurrentUser> {
   const u = await getCurrentUser();
-  if (!u) redirect("/login");
+  if (!u) {
+    // A cookie that no longer maps to a valid user must be cleared, otherwise the
+    // middleware (which can't check the database) bounces /login back to the app.
+    const session = await auth();
+    redirect(session?.user ? "/logout" : "/login");
+  }
   return u;
 }
 

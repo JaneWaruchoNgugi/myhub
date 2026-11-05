@@ -7,7 +7,7 @@ import { fail, handle } from "@/lib/action";
 import { audit } from "@/lib/audit";
 import { dayFromString } from "@/lib/dates";
 import { accountSchema, categorySchema } from "@/lib/validation/finance";
-import { opt, ownedAccount } from "../guards";
+import { opt, ownedAccount, assertId } from "../guards";
 
 const refresh = () => {
   revalidatePath("/", "layout");
@@ -29,6 +29,7 @@ export async function createAccount(input: unknown) {
 
 export async function updateAccount(id: string, input: unknown) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const v = accountSchema.parse(input);
     await prisma.$transaction(async (tx) => {
@@ -45,6 +46,7 @@ export async function updateAccount(id: string, input: unknown) {
 
 export async function deleteAccount(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const a = await ownedAccount(tx, user.id, id);
@@ -63,6 +65,7 @@ export async function deleteAccount(id: string) {
 
 export async function setAccountArchived(id: string, archived: boolean) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await ownedAccount(prisma, user.id, id);
     await prisma.account.update({ where: { id }, data: { isArchived: archived } });
@@ -81,6 +84,7 @@ export async function createCategory(input: unknown) {
 
 export async function updateCategory(id: string, input: unknown) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const v = categorySchema.omit({ type: true }).parse(input);
     const c = await prisma.transactionCategory.findFirst({ where: { id, userId: user.id } });
@@ -92,6 +96,7 @@ export async function updateCategory(id: string, input: unknown) {
 
 export async function deleteCategory(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     z.string().parse(id);
     const c = await prisma.transactionCategory.findFirst({ where: { id, userId: user.id } });

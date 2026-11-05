@@ -8,7 +8,7 @@ import { Logo } from "./logo";
 export function SidebarNav({ onNavigate, unread }: { onNavigate?: () => void; unread?: number }) {
   const pathname = usePathname();
   return (
-    <nav className="flex flex-col gap-5 px-3 pb-6" aria-label="Main">
+    <nav className="flex flex-col gap-5 px-3 pt-2 pb-6" aria-label="Main">
       {NAV.map((group) => (
         <div key={group.label}>
           <div className="text-sidebar-muted mb-1.5 px-3 text-[11px] font-semibold tracking-wider uppercase">{group.label}</div>
@@ -46,7 +46,7 @@ export function SidebarNav({ onNavigate, unread }: { onNavigate?: () => void; un
 export function Sidebar({ unread }: { unread: number }) {
   return (
     <aside className="bg-sidebar border-sidebar-border fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r lg:flex">
-      <div className="flex h-16 items-center px-6">
+      <div className="flex h-16 shrink-0 items-center px-6">
         <Logo />
       </div>
       <div className="flex-1 overflow-y-auto [scrollbar-width:thin]">

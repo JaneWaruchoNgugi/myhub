@@ -16,6 +16,9 @@ export const runtime = "nodejs";
 export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Same-origin only (defence in depth on top of SameSite cookies).
+  const origin = req.headers.get("origin");
+  if (origin && new URL(origin).host !== (req.headers.get("x-forwarded-host") ?? req.headers.get("host"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!rateLimit(`upload:${user.id}`, 30, 10 * 60_000)) return NextResponse.json({ error: "Too many uploads. Try again in a few minutes." }, { status: 429 });
 
   const len = Number(req.headers.get("content-length") ?? 0);

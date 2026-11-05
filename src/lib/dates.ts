@@ -20,13 +20,16 @@ export function addDays(d: Date, n: number): Date {
   return r;
 }
 
-/** Adds months, clamping to the end of month (31 Jan + 1 month = 28/29 Feb). */
+/**
+ * Adds months, clamping to the end of month (31 Jan + 1 month = 28/29 Feb).
+ * Keeps the time of day, so timed events and tasks don't jump to midnight.
+ */
 export function addMonths(d: Date, n: number, anchorDay?: number): Date {
   const day = anchorDay ?? d.getUTCDate();
   const y = d.getUTCFullYear();
   const m = d.getUTCMonth() + n;
   const last = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
-  return new Date(Date.UTC(y, m, Math.min(day, last)));
+  return new Date(Date.UTC(y, m, Math.min(day, last), d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds()));
 }
 
 export function startOfMonth(d: Date): Date {

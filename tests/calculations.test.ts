@@ -8,6 +8,7 @@ import { goalStats } from "@/lib/services/savings";
 import { annualCost, monthlyCost } from "@/lib/services/subscriptions";
 import { holdingStats } from "@/lib/services/investments";
 import { csvCell, toCsv } from "@/lib/csv";
+import { isRealDay } from "@/lib/validation/common";
 
 const d = dayFromString;
 
@@ -23,6 +24,15 @@ describe("dates", () => {
     expect(dayString(addMonths(d("2026-01-31"), 1))).toBe("2026-02-28");
     expect(dayString(addMonths(d("2026-02-28"), 1, 31))).toBe("2026-03-31");
     expect(dayString(advance(d("2024-02-29"), "YEARLY"))).toBe("2025-02-28");
+  });
+  it("keeps the time of day when moving timed items by months", () => {
+    const t = new Date("2026-01-31T06:30:00.000Z");
+    expect(addMonths(t, 1).toISOString()).toBe("2026-02-28T06:30:00.000Z");
+    expect(advance(new Date("2026-02-28T06:30:00.000Z"), "MONTHLY", 31).toISOString()).toBe("2026-03-31T06:30:00.000Z");
+  });
+  it("rejects impossible calendar dates", () => {
+    expect(isRealDay("2026-02-31")).toBe(false);
+    expect(isRealDay("2028-02-29")).toBe(true);
   });
   it("computes month end and day differences", () => {
     expect(dayString(endOfMonth(d("2026-02-10")))).toBe("2026-02-28");

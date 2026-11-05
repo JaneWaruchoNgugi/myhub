@@ -40,8 +40,13 @@ export const rate = z
   .pipe(z.string().regex(/^\d{1,3}(\.\d{1,4})?$/, "Enter a rate like 13 or 12.5"))
   .refine((v) => Number(v) <= 999, "Rate looks too high");
 
-export const day = z.string({ required_error: "Date is required" }).regex(DAY_RE, "Pick a date");
-export const optDay = z.union([z.literal(""), z.string().regex(DAY_RE, "Pick a valid date")]).optional();
+/** True only for real calendar dates (rejects 2026-02-31). */
+export const isRealDay = (s: string) => {
+  const d = new Date(`${s.slice(0, 10)}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s.slice(0, 10) && d.getUTCFullYear() >= 1900 && d.getUTCFullYear() <= 2200;
+};
+export const day = z.string({ required_error: "Date is required" }).regex(DAY_RE, "Pick a date").refine(isRealDay, "Pick a valid date");
+export const optDay = z.union([z.literal(""), z.string().regex(DAY_RE, "Pick a valid date").refine(isRealDay, "Pick a valid date")]).optional();
 export const optDateTime = z.union([z.literal(""), z.string().regex(DATETIME_RE, "Pick a valid date and time"), z.string().regex(DAY_RE, "Pick a valid date")]).optional();
 
 export const name = (label = "Name", max = 120) => z.string().trim().min(1, `${label} is required`).max(max, `${label} is too long`);

@@ -24,12 +24,12 @@ export function StatCard({
     warning: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   }[tone];
   return (
-    <div className={cn("bg-card flex flex-col gap-3 rounded-xl border p-4 shadow-[0_1px_2px_0_rgb(15_23_42/0.04)]", className)}>
+    <div className={cn("bg-card flex min-w-0 flex-col gap-3 rounded-xl border p-4 shadow-[0_1px_2px_0_rgb(15_23_42/0.04)]", className)}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{label}</span>
         {icon ? <span className={cn("flex size-7 items-center justify-center rounded-lg [&_svg]:size-4", toneCls)}>{icon}</span> : null}
       </div>
-      <div className="text-xl leading-none font-semibold tracking-tight tabular sm:text-[22px]">{value}</div>
+      <div className="text-lg leading-tight font-semibold tracking-tight break-words tabular sm:text-xl xl:text-[22px]">{value}</div>
       {hint ? <div className="text-muted-foreground text-xs">{hint}</div> : null}
     </div>
   );

@@ -7,12 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-export function LoginForm({ allowRegistration, showDemo }: { allowRegistration: boolean; showDemo: boolean }) {
+export function LoginForm({ allowRegistration, showDemo, notice }: { allowRegistration: boolean; showDemo: boolean; notice?: string }) {
   const [state, action, pending] = useActionState(loginAction, undefined);
   return (
     <div>
       <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
       <p className="text-muted-foreground mt-1 text-sm">Sign in to your MYHUB.</p>
+      {notice ? <p className="bg-muted text-muted-foreground mt-6 rounded-lg px-3 py-2 text-sm">{notice}</p> : null}
       <form action={action} className="mt-8 flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>

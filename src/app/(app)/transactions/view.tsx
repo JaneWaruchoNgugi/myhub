@@ -150,18 +150,34 @@ export function TransactionsView({
           ))}
         </div>
 
-        <div className="flex flex-col gap-2 xl:flex-row xl:items-center">
-          <div className="relative w-full xl:max-w-xs">
-            <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search description, notes, category" className="bg-card pl-9" aria-label="Search transactions" />
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <div className="relative min-w-0 flex-1 sm:max-w-md">
+              <Search className="text-muted-foreground absolute top-1/2 left-3 size-4 -translate-y-1/2" />
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search description, notes, category" className="bg-card pl-9" aria-label="Search transactions" />
+            </div>
+            <div className="ml-auto flex shrink-0 gap-2">
+            {selected.size ? (
+              <Button variant="destructive" size="sm" onClick={() => setBulkConfirm(true)}>
+                <Trash2 /> Delete {selected.size}
+              </Button>
+            ) : null}
+            <Button variant="outline" size="sm" asChild>
+              <a href={`/api/export/transactions?${sp.toString()}`} download>
+                <Download /> CSV
+              </a>
+            </Button>
+            </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <FilterSelect label="Type" value={filters.type} onChange={(v) => nav({ type: v })} options={Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }))} />
             <FilterSelect label="Accounts" value={filters.account} onChange={(v) => nav({ account: v })} options={filterOptions.accounts} />
             <FilterSelect label="Categories" value={filters.category} onChange={(v) => nav({ category: v })} options={[{ value: "none", label: "Uncategorised" }, ...filterOptions.categories]} />
-            <Input type="date" value={filters.from ?? ""} onChange={(e) => nav({ from: e.target.value })} className="bg-card h-9 w-[150px]" aria-label="From date" />
-            <span className="text-muted-foreground text-xs">to</span>
-            <Input type="date" value={filters.to ?? ""} onChange={(e) => nav({ to: e.target.value })} className="bg-card h-9 w-[150px]" aria-label="To date" />
+            <div className="bg-card flex h-9 items-center rounded-md border shadow-xs" role="group" aria-label="Date range">
+              <input type="date" value={filters.from ?? ""} max={filters.to ?? undefined} onChange={(e) => nav({ from: e.target.value })} className="h-full rounded-l-md bg-transparent px-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50" aria-label="From date" />
+              <span className="text-muted-foreground px-1 text-xs">to</span>
+              <input type="date" value={filters.to ?? ""} min={filters.from ?? undefined} onChange={(e) => nav({ to: e.target.value })} className="h-full rounded-r-md bg-transparent px-2.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50" aria-label="To date" />
+            </div>
             <Select value={filters.sort ?? "date_desc"} onValueChange={(v) => nav({ sort: v === "date_desc" ? null : v })}>
               <SelectTrigger className="bg-card h-9 w-auto" aria-label="Sort">
                 <SelectValue />
@@ -185,18 +201,6 @@ export function TransactionsView({
                 <X /> Clear
               </Button>
             ) : null}
-          </div>
-          <div className="flex gap-2 xl:ml-auto">
-            {selected.size ? (
-              <Button variant="destructive" size="sm" onClick={() => setBulkConfirm(true)}>
-                <Trash2 /> Delete {selected.size}
-              </Button>
-            ) : null}
-            <Button variant="outline" size="sm" asChild>
-              <a href={`/api/export/transactions?${sp.toString()}`} download>
-                <Download /> CSV
-              </a>
-            </Button>
           </div>
         </div>
 

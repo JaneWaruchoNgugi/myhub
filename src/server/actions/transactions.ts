@@ -7,7 +7,7 @@ import { audit } from "@/lib/audit";
 import { advance, dayFromString, todayIn, type Freq } from "@/lib/dates";
 import { recurringSchema, transactionSchema, txnLabelSchema } from "@/lib/validation/finance";
 import { runRecurring } from "@/lib/services/maintenance";
-import { opt, ownedAccount, ownedCategory } from "../guards";
+import { opt, ownedAccount, ownedCategory, assertId } from "../guards";
 
 const refresh = () => revalidatePath("/", "layout");
 
@@ -48,6 +48,7 @@ export async function createTransaction(input: unknown) {
 
 export async function updateTransaction(id: string, input: unknown) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const v = transactionSchema.parse(input);
     await prisma.$transaction(async (tx) => {
@@ -85,6 +86,7 @@ export async function updateTransaction(id: string, input: unknown) {
 
 export async function deleteTransaction(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     await prisma.$transaction(async (tx) => {
       const t = await tx.transaction.findFirst({ where: { id, userId: user.id } });
@@ -101,6 +103,7 @@ export async function deleteTransactions(ids: string[]) {
   return handle(async () => {
     const user = await requireUser();
     if (!Array.isArray(ids) || ids.length === 0 || ids.length > 500) fail("Select between 1 and 500 transactions.");
+    ids.forEach((i) => assertId(i));
     const res = await prisma.$transaction(async (tx) => {
       const rows = await tx.transaction.findMany({ where: { id: { in: ids }, userId: user.id, source: { in: ["MANUAL", "RECURRING"] } }, select: { id: true } });
       await tx.transaction.deleteMany({ where: { id: { in: rows.map((r) => r.id) }, userId: user.id } });
@@ -147,6 +150,7 @@ export async function createRecurring(input: unknown) {
 
 export async function updateRecurring(id: string, input: unknown) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const v = recurringSchema.parse(input);
     const rule = await prisma.recurringRule.findFirst({ where: { id, userId: user.id } });
@@ -183,6 +187,7 @@ export async function updateRecurring(id: string, input: unknown) {
 
 export async function deleteRecurring(id: string) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const rule = await prisma.recurringRule.findFirst({ where: { id, userId: user.id } });
     if (!rule) fail("Recurring rule not found.");
@@ -195,6 +200,7 @@ export async function deleteRecurring(id: string) {
 /** For transactions owned by another module: only labels can change. */
 export async function updateTransactionLabels(id: string, input: unknown) {
   return handle(async () => {
+    assertId(id);
     const user = await requireUser();
     const v = txnLabelSchema.parse(input);
     const t = await prisma.transaction.findFirst({ where: { id, userId: user.id } });

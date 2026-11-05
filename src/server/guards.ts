@@ -22,3 +22,8 @@ export async function ownedCategory(tx: Tx, userId: string, id: string, type?: "
 export const opt = (v: string | undefined | null) => (v && v.trim() ? v.trim() : null);
 export const tagList = (v: string | undefined | null) =>
   Array.from(new Set((v ?? "").split(",").map((t) => t.trim().toLowerCase()).filter(Boolean))).slice(0, 20);
+
+/** Record ids from the client must be plain strings (never objects Prisma could read as filters). */
+export function assertId(id: unknown): asserts id is string {
+  if (typeof id !== "string" || id.length === 0 || id.length > 40 || !/^[A-Za-z0-9_-]+$/.test(id)) fail("Invalid record reference.");
+}

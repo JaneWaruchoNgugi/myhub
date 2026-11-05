@@ -68,12 +68,39 @@ class SupabaseStorage implements StorageProvider {
   }
 }
 
+/**
+ * Stores file bytes in Postgres. Needs no extra service, so it suits serverless hosts like Vercel
+ * whose filesystem is read-only. Keys start with the owner's user id ("<userId>/<random>").
+ */
+class DatabaseStorage implements StorageProvider {
+  private async db() {
+    return (await import("@/lib/prisma")).prisma;
+  }
+  async put(key: string, data: Buffer, contentType: string) {
+    assertKey(key);
+    const userId = key.split("/")[0];
+    await (await this.db()).storedFile.create({ data: { key, userId, data: new Uint8Array(data), contentType, size: data.length } });
+  }
+  async get(key: string) {
+    assertKey(key);
+    const f = await (await this.db()).storedFile.findUnique({ where: { key } });
+    if (!f) throw new Error("File not found in storage");
+    return Buffer.from(f.data);
+  }
+  async remove(key: string) {
+    assertKey(key);
+    await (await this.db()).storedFile.deleteMany({ where: { key } });
+  }
+}
+
 let instance: StorageProvider | null = null;
 
 export function getStorage(): StorageProvider {
   if (instance) return instance;
-  const driver = process.env.STORAGE_DRIVER ?? "local";
-  if (driver === "supabase") {
+  // Vercel's disk is read-only, so default to the database there.
+  const driver = process.env.STORAGE_DRIVER ?? (process.env.VERCEL ? "database" : "local");
+  if (driver === "database") instance = new DatabaseStorage();
+  else if (driver === "supabase") {
     const url = process.env.SUPABASE_URL;
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
     const bucket = process.env.SUPABASE_STORAGE_BUCKET ?? "myhub-documents";
@@ -83,7 +110,8 @@ export function getStorage(): StorageProvider {
   return instance;
 }
 
-export const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_MB ?? 10) * 1024 * 1024;
+// Vercel rejects request bodies over 4.5 MB, so the default limit is lower there.
+export const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_MB ?? (process.env.VERCEL ? 4 : 10)) * 1024 * 1024;
 
 export const ALLOWED_MIME: Record<string, string[]> = {
   "application/pdf": [".pdf"],

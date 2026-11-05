@@ -36,10 +36,11 @@ async function main() {
   const existing = await prisma.user.findUnique({ where: { email: DEMO_EMAIL } });
   if (existing) {
     // Vault files for the demo user live under "<userId>/". Remove them so a reset leaves no orphans.
+    // (With STORAGE_DRIVER=database they are rows that cascade with the user.)
     if ((process.env.STORAGE_DRIVER ?? "local") === "local") {
       const dir = path.resolve(process.cwd(), process.env.LOCAL_STORAGE_DIR ?? "./storage", existing.id);
       await fs.rm(dir, { recursive: true, force: true });
-    } else {
+    } else if (process.env.STORAGE_DRIVER === "supabase") {
       const docs = await prisma.document.count({ where: { userId: existing.id } });
       if (docs) console.warn(`${docs} demo vault file(s) remain in remote storage under ${existing.id}/`);
     }

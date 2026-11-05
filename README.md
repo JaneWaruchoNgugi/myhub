@@ -60,15 +60,16 @@ Register your own account at `/register`. Each new account starts empty, with a 
 
 | Variable | Required | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | PostgreSQL connection string. |
+| `DATABASE_URL` | yes | PostgreSQL connection string (pooled is fine). |
+| `DATABASE_URL_UNPOOLED` | yes | Direct connection used for migrations. Neon's Vercel integration sets it; elsewhere use the same value as `DATABASE_URL`. |
 | `AUTH_SECRET` | yes | Signs and encrypts session tokens. Generate with `openssl rand -base64 32`. |
 | `AUTH_TRUST_HOST` | on most hosts | `true` when running behind Vercel, Docker or a reverse proxy. |
 | `ALLOW_REGISTRATION` | no | `true` allows new sign-ups; anything else disables `/register`. |
 | `SHOW_DEMO_HINT` | no | `true` shows the demo credentials on the sign-in page. |
 | `CRON_SECRET` | recommended | At least 16 characters. Protects `/api/cron/run` (see Scheduled jobs). |
-| `STORAGE_DRIVER` | no | `local` (default) or `supabase`. |
+| `STORAGE_DRIVER` | no | `local`, `database` or `supabase`. Defaults to `database` on Vercel and `local` elsewhere. `database` keeps vault files in Postgres, so it needs no extra service. |
 | `LOCAL_STORAGE_DIR` | no | Folder for vault files when using `local`. Default `./storage`. Needs a persistent disk. |
-| `MAX_UPLOAD_MB` | no | Per-file upload limit. Default `10`. |
+| `MAX_UPLOAD_MB` | no | Per-file upload limit. Default `10`, or `4` on Vercel, which rejects request bodies over 4.5 MB. |
 | `SUPABASE_URL` | if `supabase` | Your Supabase project URL. |
 | `SUPABASE_SERVICE_ROLE_KEY` | if `supabase` | Service-role key. Only read on the server; never prefix it with `NEXT_PUBLIC_`. |
 | `SUPABASE_STORAGE_BUCKET` | no | Private bucket name. Default `myhub-documents`. |
@@ -96,13 +97,18 @@ No secret is ever sent to the browser. The app has no `NEXT_PUBLIC_*` variables.
 
 ## Deployment
 
-### Vercel with a managed PostgreSQL (Neon, Supabase, Railway…)
+### Vercel with Neon (recommended)
 
-1. Create a PostgreSQL database and copy its connection string.
-2. Import the repository into Vercel and set the environment variables above (`DATABASE_URL`, `AUTH_SECRET`, `AUTH_TRUST_HOST=true`, `CRON_SECRET`, `ALLOW_REGISTRATION`).
-3. Set the build command to `npx prisma migrate deploy && next build` so migrations run on each deploy.
-4. **Document vault:** Vercel's filesystem is not persistent, so use `STORAGE_DRIVER=supabase`. Create a **private** bucket in Supabase Storage (for example `myhub-documents`), then set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_STORAGE_BUCKET`.
-5. `vercel.json` already schedules `/api/cron/run` daily at 04:00 UTC (07:00 in Nairobi). Vercel sends `Authorization: Bearer $CRON_SECRET` automatically. On a paid plan you can make it hourly (`0 * * * *`) for more timely reminders.
+1. Push the code to a GitHub repository.
+2. In Vercel choose **Add New → Project**, import the repository and leave the framework as Next.js. Don't deploy yet.
+3. In the project's **Storage** tab, add **Neon** (Serverless Postgres) and connect it to the project. This sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED` for you.
+4. In **Settings → Environment Variables** add `AUTH_SECRET` (run `openssl rand -base64 32`), `CRON_SECRET` (any random string of 16 or more characters) and `ALLOW_REGISTRATION=true`.
+5. Deploy. The `vercel-build` script runs `prisma migrate deploy` before `next build`, so every deploy applies new migrations.
+6. Open the site, register your own account, then set `ALLOW_REGISTRATION=false` and redeploy so nobody else can sign up.
+7. Vault files are stored in Postgres by default on Vercel (`STORAGE_DRIVER=database`). To use Supabase Storage instead, set `STORAGE_DRIVER=supabase` with a **private** bucket and `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_STORAGE_BUCKET`.
+8. `vercel.json` already schedules `/api/cron/run` daily at 04:00 UTC (07:00 in Nairobi). Vercel sends `Authorization: Bearer $CRON_SECRET` automatically. On a paid plan you can make it hourly (`0 * * * *`) for more timely reminders.
+
+To try the demo account on a deployment, run the seed once against the production database from your machine: `DATABASE_URL=… DATABASE_URL_UNPOOLED=… npm run db:seed`. Leave it out if the site is only for you.
 
 ### A VPS or Docker host
 

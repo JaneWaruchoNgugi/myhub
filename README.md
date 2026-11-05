@@ -61,7 +61,7 @@ Register your own account at `/register`. Each new account starts empty, with a 
 | Variable | Required | Purpose |
 | --- | --- | --- |
 | `DATABASE_URL` | yes | PostgreSQL connection string (pooled is fine). |
-| `DATABASE_URL_UNPOOLED` | yes | Direct connection used for migrations. Neon's Vercel integration sets it; elsewhere use the same value as `DATABASE_URL`. |
+| `DATABASE_URL_UNPOOLED` | no | Direct connection for migrations on Vercel. Neon sets it. If it's missing the build falls back to `POSTGRES_URL_NON_POOLING`, then `DATABASE_URL`. The app also accepts `POSTGRES_PRISMA_URL` or `POSTGRES_URL` in place of `DATABASE_URL`. |
 | `AUTH_SECRET` | yes | Signs and encrypts session tokens. Generate with `openssl rand -base64 32`. |
 | `AUTH_TRUST_HOST` | on most hosts | `true` when running behind Vercel, Docker or a reverse proxy. |
 | `ALLOW_REGISTRATION` | no | `true` allows new sign-ups; anything else disables `/register`. |
@@ -101,9 +101,9 @@ No secret is ever sent to the browser. The app has no `NEXT_PUBLIC_*` variables.
 
 1. Push the code to a GitHub repository.
 2. In Vercel choose **Add New → Project**, import the repository and leave the framework as Next.js. Don't deploy yet.
-3. In the project's **Storage** tab, add **Neon** (Serverless Postgres) and connect it to the project. This sets `DATABASE_URL` and `DATABASE_URL_UNPOOLED` for you.
+3. In the project's **Storage** tab, add **Neon** (Serverless Postgres) and connect it to the project. This sets the database variables for you. Tick all three environments (Production, Preview, Development) when connecting.
 4. In **Settings → Environment Variables** add `AUTH_SECRET` (run `openssl rand -base64 32`), `CRON_SECRET` (any random string of 16 or more characters) and `ALLOW_REGISTRATION=true`.
-5. Deploy. The `vercel-build` script runs `prisma migrate deploy` before `next build`, so every deploy applies new migrations.
+5. Deploy. The `vercel-build` script (`scripts/vercel-build.sh`) checks the required variables, runs `prisma migrate deploy` over a direct connection and then `next build`, so every deploy applies new migrations.
 6. Open the site, register your own account, then set `ALLOW_REGISTRATION=false` and redeploy so nobody else can sign up.
 7. Vault files are stored in Postgres by default on Vercel (`STORAGE_DRIVER=database`). To use Supabase Storage instead, set `STORAGE_DRIVER=supabase` with a **private** bucket and `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and `SUPABASE_STORAGE_BUCKET`.
 8. `vercel.json` already schedules `/api/cron/run` daily at 04:00 UTC (07:00 in Nairobi). Vercel sends `Authorization: Bearer $CRON_SECRET` automatically. On a paid plan you can make it hourly (`0 * * * *`) for more timely reminders.
